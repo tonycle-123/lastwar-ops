@@ -19,33 +19,36 @@ function totalPower(members: Member[]) {
   return t.toLocaleString()
 }
 
+const RANK_LABELS_LONG: Record<number, { label: string; icon: string; color: string }> = {
+  5: { label: 'Warlord',  icon: 'ti-crown',        color: '#c07800' },
+  4: { label: 'Officers', icon: 'ti-star',          color: '#3a7ae8' },
+  3: { label: 'Elite',    icon: 'ti-shield-half',   color: '#3ab870' },
+  2: { label: 'Members',  icon: 'ti-user',          color: '#8090c0' },
+  1: { label: 'Recruits', icon: 'ti-user-plus',     color: '#a0a0b8' },
+}
+
 export default function RosterPage() {
   const supabase = createClient()
-  const [members, setMembers]     = useState<Member[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [form, setForm]           = useState(EMPTY_FORM)
-  const [editId, setEditId]       = useState<string | null>(null)
-  const [showForm, setShowForm]   = useState(false)
-  const [saving, setSaving]       = useState(false)
-  const [error, setError]         = useState<string | null>(null)
-  const [search, setSearch]       = useState('')
+  const [members, setMembers]       = useState<Member[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [form, setForm]             = useState(EMPTY_FORM)
+  const [editId, setEditId]         = useState<string | null>(null)
+  const [showForm, setShowForm]     = useState(false)
+  const [saving, setSaving]         = useState(false)
+  const [error, setError]           = useState<string | null>(null)
+  const [search, setSearch]         = useState('')
   const [dupWarning, setDupWarning] = useState<string | null>(null)
 
   async function fetchMembers() {
-    const { data, error } = await supabase
-      .from('members').select('*').eq('active', true)
-      .order('rank', { ascending: false })
-      .order('power', { ascending: false })
+    const { data, error } = await supabase.from('members').select('*').eq('active', true)
+      .order('rank', { ascending: false }).order('power', { ascending: false })
     if (error) { setError(error.message); return }
     setMembers(data || [])
   }
 
   useEffect(() => { fetchMembers().finally(() => setLoading(false)) }, [])
 
-  function openAdd() {
-    setForm(EMPTY_FORM); setEditId(null); setShowForm(true); setError(null); setDupWarning(null)
-  }
-
+  function openAdd() { setForm(EMPTY_FORM); setEditId(null); setShowForm(true); setError(null); setDupWarning(null) }
   function openEdit(m: Member) {
     setForm({ name: m.name, rank: m.rank, power: String(m.power), notes: m.notes || '' })
     setEditId(m.id); setShowForm(true); setError(null); setDupWarning(null)
@@ -53,15 +56,14 @@ export default function RosterPage() {
 
   function handleNameChange(value: string) {
     setForm(f => ({ ...f, name: value }))
-    if (!value.trim()) { setDupWarning(null); return }
     const dup = members.find(m => m.name.toLowerCase() === value.trim().toLowerCase() && m.id !== editId)
-    setDupWarning(dup ? `⚠️ "${dup.name}" already exists (R${dup.rank} · ${formatPower(dup.power)})` : null)
+    setDupWarning(dup ? `"${dup.name}" already exists (R${dup.rank} · ${formatPower(dup.power)})` : null)
   }
 
   async function handleSave() {
     if (!form.name.trim()) { setError('Name is required'); return }
     const dup = members.find(m => m.name.toLowerCase() === form.name.trim().toLowerCase() && m.id !== editId)
-    if (dup) { setError(`"${dup.name}" already exists in the roster.`); return }
+    if (dup) { setError(`"${dup.name}" already exists.`); return }
     setSaving(true); setError(null)
     const payload = { name: form.name.trim(), rank: Number(form.rank), power: form.power ? Number(form.power.toString().replace(/,/g, '')) : 0, notes: form.notes || null }
     if (editId) {
@@ -71,8 +73,7 @@ export default function RosterPage() {
       const { error } = await supabase.from('members').insert(payload)
       if (error) { setError(error.message); setSaving(false); return }
     }
-    await fetchMembers()
-    setShowForm(false); setForm(EMPTY_FORM); setEditId(null); setDupWarning(null); setSaving(false)
+    await fetchMembers(); setShowForm(false); setForm(EMPTY_FORM); setEditId(null); setDupWarning(null); setSaving(false)
   }
 
   async function handleDelete(id: string, name: string) {
@@ -87,74 +88,62 @@ export default function RosterPage() {
     RANK_LABELS[m.rank]?.toLowerCase().includes(search.toLowerCase())
   )
 
-  // Group by rank
   const grouped = [5,4,3,2,1].map(rank => ({
-    rank,
-    members: filtered.filter(m => m.rank === rank)
+    rank, members: filtered.filter(m => m.rank === rank)
   })).filter(g => g.members.length > 0)
-
-  const rankLabels: Record<number, string> = { 5: 'R5 — Warlord', 4: 'R4 — Officers', 3: 'R3 — Elite', 2: 'R2 — Members', 1: 'R1 — Recruits' }
 
   return (
     <div>
-      {/* Hero banner */}
-      <div style={{ background: '#0e1e40', border: '1px solid #1e3a6e', borderRadius: 12, padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+      {/* Alliance banner */}
+      <div style={{ background: '#2a4a9a', borderRadius: 14, padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 52, height: 52, background: '#1a2d5a', border: '2px solid #f5a623', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>🛡️</div>
+          <div style={{ width: 52, height: 52, background: '#1a3a7a', border: '2px solid #f5c842', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <i className="ti ti-shield" aria-hidden="true" style={{ fontSize: 26, color: '#f5c842' }} />
+          </div>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: '#f5a623', letterSpacing: '0.08em' }}>[ ISLE ]</div>
-            <div style={{ fontSize: 12, color: '#4a7ab5', marginTop: 3, display: 'flex', gap: 10 }}>
-              <span>Server 1109</span>
-              <span style={{ color: '#1e3a6e' }}>·</span>
-              <span style={{ color: '#4aaa6a' }}>● Active</span>
+            <div style={{ fontSize: 20, fontWeight: 900, color: '#f5c842' }}>[{ALLIANCE_TAG}] {ALLIANCE_NAME}</div>
+            <div style={{ fontSize: 12, color: '#7aaaff', marginTop: 3, display: 'flex', gap: 10 }}>
+              <span>Server {SERVER_NUM}</span>
+              <span style={{ color: '#3a5aaa' }}>·</span>
+              <span style={{ color: '#4ae87a' }}>● Active</span>
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <div className="lw-stat">
-            <div className="lw-stat-val">{members.length}</div>
-            <div className="lw-stat-label">Members</div>
-          </div>
-          <div className="lw-stat">
-            <div className="lw-stat-val" style={{ color: '#f5a623' }}>{totalPower(members)}</div>
-            <div className="lw-stat-label">Total Power</div>
-          </div>
-          <div className="lw-stat">
-            <div className="lw-stat-val" style={{ color: '#4aaa6a' }}>{members.filter(m => m.rank >= 4).length}</div>
-            <div className="lw-stat-label">Officers+</div>
-          </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div className="lw-stat"><div className="lw-stat-val">{members.length}</div><div className="lw-stat-label">Members</div></div>
+          <div className="lw-stat"><div className="lw-stat-val">{totalPower(members)}</div><div className="lw-stat-label">Power</div></div>
+          <div className="lw-stat"><div className="lw-stat-val" style={{ color: '#7aaaff' }}>{members.filter(m => m.rank >= 4).length}</div><div className="lw-stat-label">Officers+</div></div>
         </div>
       </div>
 
-      {/* Header row */}
+      {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div className="section-title">
           <i className="ti ti-users" aria-hidden="true" />
           Member Roster
-          {filtered.length !== members.length && <span style={{ color: '#4a3820', fontWeight: 400 }}>— {filtered.length} of {members.length}</span>}
+          {filtered.length !== members.length && <span style={{ color: '#8090b8', fontWeight: 600, fontSize: 11 }}>· {filtered.length} of {members.length}</span>}
         </div>
-        <button className="btn-gold" onClick={openAdd}>
-          <i className="ti ti-plus" aria-hidden="true" />
-          Add Member
+        <button className="btn-primary btn-sm" onClick={openAdd}>
+          <i className="ti ti-plus" aria-hidden="true" style={{ fontSize: 12 }} /> Add Member
         </button>
       </div>
 
       {/* Search */}
       <div className="lw-search" style={{ marginBottom: 14 }}>
-        <i className="ti ti-search" aria-hidden="true" style={{ color: '#4a3820', fontSize: 14 }} />
+        <i className="ti ti-search" aria-hidden="true" style={{ color: '#8090b8', fontSize: 14 }} />
         <input placeholder="Search by name or rank…" value={search} onChange={e => setSearch(e.target.value)} />
-        {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#4a3820', cursor: 'pointer', fontSize: 12 }}>✕</button>}
+        {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#a0b0cc', cursor: 'pointer', fontSize: 13 }}>✕</button>}
       </div>
 
-      {/* Add / Edit form */}
+      {/* Add/Edit form */}
       {showForm && (
         <div className="lw-form-panel" style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#7ab4f5', marginBottom: 14 }}>{editId ? 'Edit Member' : 'Add Member'}</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#1a2a4a', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{editId ? 'Edit Member' : 'Add Member'}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
             <div style={{ gridColumn: 'span 2' }}>
               <label className="lw-form-label">Name *</label>
-              <input className="lw-input" style={{ borderColor: dupWarning ? '#8a4020' : undefined }} placeholder="Member name" value={form.name} onChange={e => handleNameChange(e.target.value)} />
-              {dupWarning && <p style={{ color: '#e07030', fontSize: 11, marginTop: 4 }}>{dupWarning}</p>}
+              <input className="lw-input" style={{ borderColor: dupWarning ? '#f0a080' : undefined }} placeholder="Member name" value={form.name} onChange={e => handleNameChange(e.target.value)} />
+              {dupWarning && <p style={{ color: '#c07040', fontSize: 11, marginTop: 4 }}>⚠️ {dupWarning}</p>}
             </div>
             <div>
               <label className="lw-form-label">Rank</label>
@@ -173,64 +162,58 @@ export default function RosterPage() {
           </div>
           {error && <div className="lw-error" style={{ marginTop: 12 }}>{error}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-            <button className="btn-gold" onClick={handleSave} disabled={saving || !!dupWarning}>
+            <button className="btn-primary btn-sm" onClick={handleSave} disabled={saving || !!dupWarning}>
               {saving ? 'Saving…' : editId ? 'Save Changes' : 'Add Member'}
             </button>
-            <button className="btn-ghost" onClick={() => { setShowForm(false); setError(null); setDupWarning(null) }}>Cancel</button>
+            <button className="btn-primary btn-sm" onClick={() => { setShowForm(false); setError(null); setDupWarning(null) }} style={{ background: 'transparent', color: '#4a5a7a', borderColor: '#c0cce0' }}>Cancel</button>
           </div>
         </div>
       )}
 
-      {/* Table */}
       {loading ? (
-        <div style={{ textAlign: 'center', color: '#4a3820', padding: '48px 0', fontSize: 13 }}>Loading roster…</div>
+        <div style={{ textAlign: 'center', color: '#8090b8', padding: '48px 0', fontSize: 13 }}>Loading roster…</div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', color: '#4a3820', padding: '48px 0', fontSize: 13 }}>
+        <div style={{ textAlign: 'center', color: '#8090b8', padding: '48px 0', fontSize: 13 }}>
           {search ? `No members matching "${search}"` : 'No members yet — add your first one above.'}
         </div>
       ) : (
-        <div className="lw-card">
-          <table className="lw-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Name</th>
-                <th>Rank</th>
-                <th style={{ textAlign: 'right' }}>Power</th>
-                <th style={{ display: 'none' }} className="sm-show">Notes</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {grouped.map(({ rank, members: group }) => (
-                <>
-                  <tr key={`div-${rank}`} className="rank-divider">
-                    <td colSpan={6}>
-                      <div className="rank-divider-label">{rankLabels[rank]} <span style={{ color: '#3a2a10' }}>({group.length})</span></div>
-                    </td>
-                  </tr>
-                  {group.map((m, i) => {
-                    const globalIdx = filtered.indexOf(m)
-                    return (
-                      <tr key={m.id}>
-                        <td style={{ color: '#1a3060', fontSize: 11, width: 32 }}>{globalIdx + 1}</td>
-                        <td style={{ fontWeight: 700, color: '#f5f0e0' }}>{m.name}</td>
-                        <td><span className={`rank-badge rank-${m.rank}`}>R{m.rank}</span></td>
-                        <td style={{ textAlign: 'right' }} className="power-text">{formatPower(m.power)}</td>
-                        <td style={{ color: '#2a4a7a', fontSize: 12 }}>{m.notes || '—'}</td>
-                        <td>
-                          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                            <button className="btn-ghost" onClick={() => openEdit(m)}>Edit</button>
-                            <button className="btn-ghost danger" onClick={() => handleDelete(m.id, m.name)}>Delete</button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {grouped.map(({ rank, members: group }) => {
+            const rl = RANK_LABELS_LONG[rank]
+            return (
+              <div key={rank} style={{ marginBottom: 12 }}>
+                {/* Rank divider */}
+                <div style={{ background: '#dde3f0', borderRadius: 8, padding: '5px 14px', marginBottom: 7, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#4a6aaa', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <i className={`ti ${rl.icon}`} aria-hidden="true" style={{ fontSize: 12, color: rl.color }} />
+                    R{rank} — {rl.label}
+                  </div>
+                  <span style={{ fontSize: 10, color: '#7a8ab8', background: '#c8d4ec', padding: '1px 8px', borderRadius: 10, fontWeight: 700 }}>{group.length}</span>
+                </div>
+                {/* Member cards */}
+                {group.map((m, i) => {
+                  const globalIdx = filtered.indexOf(m)
+                  return (
+                    <div key={m.id} className="member-card" style={{ marginBottom: 6 }}>
+                      <div style={{ width: 24, textAlign: 'center', flexShrink: 0, fontSize: 12, fontWeight: 800, color: '#a0b0cc' }}>{globalIdx + 1}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: '#1a2a4a' }}>{m.name}</div>
+                        <div style={{ marginTop: 3 }}><span className={`rank-badge rank-${m.rank}`}>R{m.rank}</span></div>
+                      </div>
+                      <div style={{ textAlign: 'right', marginRight: 8, flexShrink: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: '#1a2a4a', fontFamily: 'monospace' }}>{formatPower(m.power)}</div>
+                        <div style={{ fontSize: 9, color: '#8090b8', fontWeight: 600, textTransform: 'uppercase', marginTop: 1 }}>Power</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                        <button className="btn-primary btn-sm" onClick={() => openEdit(m)}>Edit</button>
+                        <button className="btn-danger btn-sm" onClick={() => handleDelete(m.id, m.name)}>Delete</button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
