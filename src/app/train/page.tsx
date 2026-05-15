@@ -47,7 +47,7 @@ export default function TrainPage() {
   async function fetchMembers() {
     const { data } = await supabase
       .from('members')
-      .select('id, name, rank')
+      .select('*')
       .eq('active', true)
       .order('rank', { ascending: false })
       .order('name')
