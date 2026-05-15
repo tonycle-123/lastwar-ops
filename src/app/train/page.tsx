@@ -191,21 +191,28 @@ export default function TrainPage() {
     log => new Date(log.log_date + 'T00:00:00') >= twoWeeksAgo
   )
 
-  const recentConductors = [...new Set(recentLogs.map(l => l.conductor_name))].map(name => ({
-    name,
-    role: 'Conductor' as const,
-    count: recentLogs.filter(l => l.conductor_name === name).length,
-    dates: recentLogs.filter(l => l.conductor_name === name).map(l => formatDate(l.log_date)),
-  })).sort((a, b) => b.count - a.count)
+  // Combine conductor + VIP activity per member into one row
+  const allNames = [
+    ...recentLogs.map(l => l.conductor_name),
+    ...recentLogs.filter(l => l.vip_name).map(l => l.vip_name!),
+  ]
+  const uniqueNames = [...new Set(allNames)]
 
-  const recentVIPs = [...new Set(recentLogs.filter(l => l.vip_name).map(l => l.vip_name!))].map(name => ({
-    name,
-    role: 'VIP' as const,
-    count: recentLogs.filter(l => l.vip_name === name).length,
-    dates: recentLogs.filter(l => l.vip_name === name).map(l => formatDate(l.log_date)),
-  })).sort((a, b) => b.count - a.count)
+  const flagged = uniqueNames.map(name => {
+    const asConductor = recentLogs.filter(l => l.conductor_name === name)
+    const asVIP       = recentLogs.filter(l => l.vip_name === name)
+    const roles: string[] = []
+    if (asConductor.length > 0) roles.push('C x' + asConductor.length)
+    if (asVIP.length > 0)       roles.push('VIP x' + asVIP.length)
+    const allDates = [
+      ...asConductor.map(l => ({ date: l.log_date, role: 'C' })),
+      ...asVIP.map(l => ({ date: l.log_date, role: 'V' })),
+    ].sort((a, b) => a.date.localeCompare(b.date))
+    return { name, roles, allDates, total: asConductor.length + asVIP.length }
+  }).sort((a, b) => b.total - a.total)
 
-  const flagged = [...recentConductors, ...recentVIPs]
+  const recentConductors = flagged
+  const recentVIPs: typeof flagged = []
 
   return (
     <div>
@@ -221,59 +228,6 @@ export default function TrainPage() {
           + Log Today
         </button>
       </div>
-
-      {/* Collapsible 14-day alert */}
-      {flagged.length > 0 && (
-        <div className="bg-orange-950/40 border border-orange-800 rounded-xl mb-6 overflow-hidden">
-          <button
-            onClick={() => setAlertOpen(o => !o)}
-            className="w-full flex items-center justify-between px-4 py-3 text-left"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-orange-400 text-sm font-semibold">
-                ⚠️ Active in last 14 days
-              </span>
-              <span className="bg-orange-900/60 text-orange-300 text-xs px-2 py-0.5 rounded-full">
-                {recentConductors.length} conductors · {recentVIPs.length} VIPs
-              </span>
-            </div>
-            <span className="text-orange-500 text-xs">{alertOpen ? '▲ collapse' : '▼ expand'}</span>
-          </button>
-
-          {alertOpen && (
-            <div className="px-4 pb-4 border-t border-orange-800/50">
-              {recentConductors.length > 0 && (
-                <>
-                  <p className="text-orange-600 text-xs font-medium uppercase tracking-wide mt-3 mb-2">Conductors</p>
-                  <div className="flex flex-col gap-1.5">
-                    {recentConductors.map(({ name, count, dates }) => (
-                      <div key={name} className="bg-orange-900/30 rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
-                        <span className="text-orange-200 text-sm font-semibold">{name}</span>
-                        <span className="text-orange-400 text-xs">×{count}</span>
-                        <span className="text-orange-600 text-xs">{dates.join(' · ')}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-              {recentVIPs.length > 0 && (
-                <>
-                  <p className="text-orange-600 text-xs font-medium uppercase tracking-wide mt-3 mb-2">VIPs</p>
-                  <div className="flex flex-col gap-1.5">
-                    {recentVIPs.map(({ name, count, dates }) => (
-                      <div key={name} className="bg-orange-900/30 rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
-                        <span className="text-orange-200 text-sm font-semibold">{name}</span>
-                        <span className="text-orange-400 text-xs">×{count}</span>
-                        <span className="text-orange-600 text-xs">{dates.join(' · ')}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Add / Edit Form */}
       {showForm && (
@@ -340,6 +294,44 @@ export default function TrainPage() {
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Collapsible 14-day alert */}
+      {flagged.length > 0 && (
+        <div className="bg-orange-950/40 border border-orange-800 rounded-xl mb-6 overflow-hidden">
+          <button
+            onClick={() => setAlertOpen(o => !o)}
+            className="w-full flex items-center justify-between px-4 py-3 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-orange-400 text-sm font-semibold">
+                ⚠️ Active in last 14 days
+              </span>
+              <span className="bg-orange-900/60 text-orange-300 text-xs px-2 py-0.5 rounded-full">
+                {flagged.length} {flagged.length === 1 ? 'member' : 'members'} active
+              </span>
+            </div>
+            <span className="text-orange-500 text-xs">{alertOpen ? '▲ collapse' : '▼ expand'}</span>
+          </button>
+
+          {alertOpen && (
+            <div className="px-4 pb-4 border-t border-orange-800/50 mt-1">
+              <div className="flex flex-col gap-1.5 mt-3">
+                {flagged.map(({ name, roles, allDates }) => (
+                  <div key={name} className="bg-orange-900/30 rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
+                    <span className="text-orange-200 text-sm font-semibold">{name}</span>
+                    {roles.map(r => (
+                      <span key={r} className="bg-orange-800/50 text-orange-300 text-xs px-1.5 py-0.5 rounded">{r}</span>
+                    ))}
+                    <span className="text-orange-600 text-xs">
+                      {allDates.map(d => formatDate(d.date) + (d.role === 'V' ? ' (VIP)' : '')).join(' · ')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
