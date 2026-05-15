@@ -153,8 +153,8 @@ export default function DuelPage() {
             <i className="ti ti-trophy" aria-hidden="true" />
             Alliance Duel
           </div>
-          <div style={{ fontSize: 12, color: '#4a3820', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ color: isCurrentWeek ? '#4a8a4a' : '#7a6030' }}>
+          <div style={{ fontSize: 12, color: '#2a4a7a', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: isCurrentWeek ? '#4a8a4a' : '#4a7ab5' }}>
               {isCurrentWeek ? '● Current week' : '○ Past event'}
             </span>
             {selectedEvent && <span>— week of {formatDateLabel(selectedEvent.week_start)}</span>}
@@ -178,25 +178,25 @@ export default function DuelPage() {
       {error && <div className="lw-error" style={{ marginBottom: 14 }}>{error}</div>}
 
       {loading ? (
-        <div style={{ textAlign: 'center', color: '#4a3820', padding: '48px 0', fontSize: 13 }}>Loading scores…</div>
+        <div style={{ textAlign: 'center', color: '#2a4a7a', padding: '48px 0', fontSize: 13 }}>Loading scores…</div>
       ) : (
         <>
           {/* Day theme cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 16 }}>
             {Object.entries(DUEL_DAYS).map(([day, theme]) => (
-              <div key={day} style={{ background: '#141210', border: '1px solid #2a1f0a', borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
-                <i className={`ti ${DAY_ICONS[Number(day)]}`} aria-hidden="true" style={{ fontSize: 16, color: '#b8860b', display: 'block', marginBottom: 4 }} />
-                <div style={{ fontSize: 10, color: '#4a3820', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Day {day}</div>
-                <div style={{ fontSize: 10, color: '#7a6030', marginTop: 2 }}>{theme.short}</div>
+              <div key={day} style={{ background: '#0a1220', border: '1px solid #1e3a6e', borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
+                <i className={`ti ${DAY_ICONS[Number(day)]}`} aria-hidden="true" style={{ fontSize: 16, color: '#2a5090', display: 'block', marginBottom: 4 }} />
+                <div style={{ fontSize: 10, color: '#2a4a7a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Day {day}</div>
+                <div style={{ fontSize: 10, color: '#4a7ab5', marginTop: 2 }}>{theme.short}</div>
               </div>
             ))}
           </div>
 
           {/* Search */}
           <div className="lw-search" style={{ marginBottom: 12 }}>
-            <i className="ti ti-search" aria-hidden="true" style={{ color: '#4a3820', fontSize: 14 }} />
+            <i className="ti ti-search" aria-hidden="true" style={{ color: '#2a4a7a', fontSize: 14 }} />
             <input placeholder="Search member…" value={search} onChange={e => setSearch(e.target.value)} />
-            {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#4a3820', cursor: 'pointer', fontSize: 12 }}>✕</button>}
+            {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#2a4a7a', cursor: 'pointer', fontSize: 12 }}>✕</button>}
           </div>
 
           {/* Score table */}
@@ -208,29 +208,29 @@ export default function DuelPage() {
                   <th>Member</th>
                   {Object.entries(DUEL_DAYS).map(([day, theme]) => (
                     <th key={day} style={{ textAlign: 'right' }}>
-                      <span style={{ display: 'block', color: '#4a3820' }}>D{day}</span>
-                      <span style={{ display: 'block', color: '#3a2a10', fontSize: 9, textTransform: 'none', fontWeight: 400 }}>{theme.short}</span>
+                      <span style={{ display: 'block', color: '#2a4a7a' }}>D{day}</span>
+                      <span style={{ display: 'block', color: '#1a3060', fontSize: 9, textTransform: 'none', fontWeight: 400 }}>{theme.short}</span>
                     </th>
                   ))}
-                  <th style={{ textAlign: 'right', color: '#b8860b' }}>Total</th>
+                  <th style={{ textAlign: 'right', color: '#2a5090' }}>Total</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={9} style={{ textAlign: 'center', color: '#4a3820', padding: '40px 0' }}>{search ? `No members matching "${search}"` : 'No members yet.'}</td></tr>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', color: '#2a4a7a', padding: '40px 0' }}>{search ? `No members matching "${search}"` : 'No members yet.'}</td></tr>
                 ) : filtered.map((m, i) => {
                   const pct = topScore > 0 ? (m.total / topScore) : 0
                   return (
                     <tr key={m.id}>
-                      <td style={{ color: '#3a2a10', fontSize: 11 }}>
+                      <td style={{ color: '#1a3060', fontSize: 11 }}>
                         {i === 0 && m.total > 0 ? '🥇' : i === 1 && m.total > 0 ? '🥈' : i === 2 && m.total > 0 ? '🥉' : i + 1}
                       </td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontWeight: 500, color: '#e8d8a0' }}>{m.name}</span>
+                          <span style={{ fontWeight: 500, color: '#f5f0e0' }}>{m.name}</span>
                           {m.total > 0 && (
-                            <div style={{ height: 3, width: 48, background: '#1a1400', borderRadius: 2, overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${pct * 100}%`, background: 'linear-gradient(90deg, #b8860b, #ffd700)', borderRadius: 2 }} />
+                            <div style={{ height: 3, width: 48, background: '#0e1e40', borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${pct * 100}%`, background: 'linear-gradient(90deg, #2a5090, #f5a623)', borderRadius: 2 }} />
                             </div>
                           )}
                         </div>
@@ -244,7 +244,7 @@ export default function DuelPage() {
                             {isEditing ? (
                               <input
                                 autoFocus
-                                style={{ width: 80, background: '#1a1400', border: '1px solid #b8860b', borderRadius: 5, padding: '3px 6px', fontSize: 12, color: '#ffd700', textAlign: 'right', outline: 'none', fontFamily: 'monospace' }}
+                                style={{ width: 80, background: '#0e1e40', border: '1px solid #2a5090', borderRadius: 5, padding: '3px 6px', fontSize: 12, color: '#f5a623', textAlign: 'right', outline: 'none', fontFamily: 'monospace' }}
                                 value={editValue}
                                 onChange={e => setEditValue(e.target.value)}
                                 onBlur={commitEdit}
@@ -254,8 +254,8 @@ export default function DuelPage() {
                             ) : (
                               <button
                                 onClick={() => startEdit(m.id, day)}
-                                style={{ fontFamily: 'monospace', fontSize: 12, padding: '3px 6px', borderRadius: 5, border: '1px solid transparent', background: 'transparent', cursor: 'pointer', width: 80, textAlign: 'right', transition: 'all 0.1s', color: val > 0 ? '#c8a840' : '#3a2a10', opacity: isSaving ? 0.5 : 1 }}
-                                onMouseEnter={e => { (e.target as HTMLButtonElement).style.borderColor = '#2a1f0a'; (e.target as HTMLButtonElement).style.background = '#141200' }}
+                                style={{ fontFamily: 'monospace', fontSize: 12, padding: '3px 6px', borderRadius: 5, border: '1px solid transparent', background: 'transparent', cursor: 'pointer', width: 80, textAlign: 'right', transition: 'all 0.1s', color: val > 0 ? '#7ab4f5' : '#1a3060', opacity: isSaving ? 0.5 : 1 }}
+                                onMouseEnter={e => { (e.target as HTMLButtonElement).style.borderColor = '#1e3a6e'; (e.target as HTMLButtonElement).style.background = '#091428' }}
                                 onMouseLeave={e => { (e.target as HTMLButtonElement).style.borderColor = 'transparent'; (e.target as HTMLButtonElement).style.background = 'transparent' }}
                               >
                                 {val > 0 ? formatScore(val) : '—'}
@@ -264,7 +264,7 @@ export default function DuelPage() {
                           </td>
                         )
                       })}
-                      <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: m.total > 0 ? '#ffd700' : '#3a2a10' }}>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: m.total > 0 ? '#f5a623' : '#1a3060' }}>
                         {m.total > 0 ? formatScore(m.total) : '—'}
                       </td>
                     </tr>
@@ -273,7 +273,7 @@ export default function DuelPage() {
               </tbody>
             </table>
           </div>
-          <p style={{ textAlign: 'center', color: '#3a2a10', fontSize: 11, marginTop: 10 }}>
+          <p style={{ textAlign: 'center', color: '#1a3060', fontSize: 11, marginTop: 10 }}>
             Click any score cell to edit · Enter to save · Escape to cancel
           </p>
         </>

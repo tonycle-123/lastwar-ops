@@ -52,7 +52,8 @@ export const DUEL_DAYS: Record<number, { name: string; short: string }> = {
   6: { name: 'Enemy Buster',       short: 'Buster'   },
 }
 
-export const ALLIANCE_TAG = 'ISLE'
+export const ALLIANCE_TAG  = 'ISLE'
+export const ALLIANCE_NAME = 'Island Wayz'
 export const SERVER_NUM   = '1109'
 
 export const RANK_LABELS: Record<number, string> = {

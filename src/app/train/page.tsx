@@ -23,7 +23,7 @@ function NameCell({ name, priorDates }: { name: string; priorDates: string[] }) 
   const hasFlag = priorDates.length > 0
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ fontWeight: 500, color: '#e8d8a0' }}>{name}</span>
+      <span style={{ fontWeight: 500, color: '#f5f0e0' }}>{name}</span>
       {hasFlag && (
         <button
           onClick={() => setOpen(o => !o)}
@@ -172,7 +172,7 @@ export default function TrainPage() {
             <i className="ti ti-train" aria-hidden="true" />
             Train Conductor Log
           </div>
-          <div style={{ fontSize: 12, color: '#4a3820' }}>{logs.length} days recorded</div>
+          <div style={{ fontSize: 12, color: '#2a4a7a' }}>{logs.length} days recorded</div>
         </div>
         <button className="btn-gold" onClick={openAdd}>
           <i className="ti ti-plus" aria-hidden="true" />
@@ -183,7 +183,7 @@ export default function TrainPage() {
       {/* Add / Edit form */}
       {showForm && (
         <div className="lw-form-panel" style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#c8a840', marginBottom: 14 }}>{editId ? 'Edit Entry' : 'Log Train Entry'}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#7ab4f5', marginBottom: 14 }}>{editId ? 'Edit Entry' : 'Log Train Entry'}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
             <div>
               <label className="lw-form-label">Date</label>
@@ -219,16 +219,16 @@ export default function TrainPage() {
 
       {/* Search */}
       <div className="lw-search" style={{ marginBottom: 12 }}>
-        <i className="ti ti-search" aria-hidden="true" style={{ color: '#4a3820', fontSize: 14 }} />
+        <i className="ti ti-search" aria-hidden="true" style={{ color: '#2a4a7a', fontSize: 14 }} />
         <input placeholder="Search by name or date…" value={search} onChange={e => setSearch(e.target.value)} />
-        {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#4a3820', cursor: 'pointer', fontSize: 12 }}>✕</button>}
+        {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#2a4a7a', cursor: 'pointer', fontSize: 12 }}>✕</button>}
       </div>
 
       {/* Table */}
       {loading ? (
-        <div style={{ textAlign: 'center', color: '#4a3820', padding: '48px 0', fontSize: 13 }}>Loading log…</div>
+        <div style={{ textAlign: 'center', color: '#2a4a7a', padding: '48px 0', fontSize: 13 }}>Loading log…</div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', color: '#4a3820', padding: '48px 0', fontSize: 13 }}>
+        <div style={{ textAlign: 'center', color: '#2a4a7a', padding: '48px 0', fontSize: 13 }}>
           {search ? `No entries matching "${search}"` : "No entries yet — log today's conductor above."}
         </div>
       ) : (
@@ -251,17 +251,17 @@ export default function TrainPage() {
                 return (
                   <tr key={log.id}>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <span style={{ color: '#7a6030', fontSize: 12 }}>{formatDate(log.log_date)}</span>
-                      {isRecent && <span style={{ marginLeft: 6, background: '#1a1400', border: '1px solid #b8860b', color: '#ffd700', fontSize: 9, padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>RECENT</span>}
+                      <span style={{ color: '#4a7ab5', fontSize: 12 }}>{formatDate(log.log_date)}</span>
+                      {isRecent && <span style={{ marginLeft: 6, background: '#0e1e40', border: '1px solid #2a5090', color: '#f5a623', fontSize: 9, padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>RECENT</span>}
                     </td>
                     <td><NameCell name={log.conductor_name} priorDates={isRecent ? conductorPrior : []} /></td>
                     <td>
                       {log.vip_name
                         ? <NameCell name={log.vip_name} priorDates={isRecent ? vipPrior : []} />
-                        : <span style={{ color: '#3a2a10' }}>—</span>
+                        : <span style={{ color: '#1a3060' }}>—</span>
                       }
                     </td>
-                    <td style={{ color: '#4a3820', fontSize: 12 }}>{log.notes || '—'}</td>
+                    <td style={{ color: '#2a4a7a', fontSize: 12 }}>{log.notes || '—'}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                         <button className="btn-ghost" onClick={() => openEdit(log)}>Edit</button>

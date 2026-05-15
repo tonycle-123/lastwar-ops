@@ -2,14 +2,14 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import Nav from '@/components/Nav'
-import { ALLIANCE_TAG, SERVER_NUM } from '@/lib/types'
+import { ALLIANCE_TAG, ALLIANCE_NAME, SERVER_NUM } from '@/lib/types'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: `${ALLIANCE_TAG} Ops — Server ${SERVER_NUM}`,
-  description: `Alliance management for Server ${SERVER_NUM} / ${ALLIANCE_TAG}`,
+  title: `[${ALLIANCE_TAG}] ${ALLIANCE_NAME} — S${SERVER_NUM}`,
+  description: `Alliance management for [${ALLIANCE_TAG}] ${ALLIANCE_NAME} · Server ${SERVER_NUM}`,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

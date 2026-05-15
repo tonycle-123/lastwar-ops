@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Member, RANK_LABELS } from '@/lib/types'
+import { Member, RANK_LABELS, ALLIANCE_NAME, ALLIANCE_TAG, SERVER_NUM } from '@/lib/types'
 
 const EMPTY_FORM = { name: '', rank: 3, power: '', notes: '' }
 
@@ -93,20 +93,20 @@ export default function RosterPage() {
     members: filtered.filter(m => m.rank === rank)
   })).filter(g => g.members.length > 0)
 
-  const rankLabels: Record<number, string> = { 5: 'R5 — Leader', 4: 'R4 — Officers', 3: 'R3 — Elite', 2: 'R2 — Members', 1: 'R1 — Recruits' }
+  const rankLabels: Record<number, string> = { 5: 'R5 — Warlord', 4: 'R4 — Officers', 3: 'R3 — Elite', 2: 'R2 — Members', 1: 'R1 — Recruits' }
 
   return (
     <div>
       {/* Hero banner */}
-      <div style={{ background: 'linear-gradient(180deg, #1a1000 0%, #0d0d0f 100%)', border: '1px solid #2a1f0a', borderRadius: 12, padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+      <div style={{ background: '#0e1e40', border: '1px solid #1e3a6e', borderRadius: 12, padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 52, height: 52, background: 'linear-gradient(135deg, #1a1000, #2a1f0a)', border: '2px solid #b8860b', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>🛡️</div>
+          <div style={{ width: 52, height: 52, background: '#1a2d5a', border: '2px solid #f5a623', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>🛡️</div>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: '#ffd700', letterSpacing: '0.08em' }}>[ ISLE ]</div>
-            <div style={{ fontSize: 12, color: '#7a6030', marginTop: 3, display: 'flex', gap: 10 }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#f5a623', letterSpacing: '0.08em' }}>[ ISLE ]</div>
+            <div style={{ fontSize: 12, color: '#4a7ab5', marginTop: 3, display: 'flex', gap: 10 }}>
               <span>Server 1109</span>
-              <span style={{ color: '#3a2a10' }}>·</span>
-              <span style={{ color: '#4a8a4a' }}>● Active</span>
+              <span style={{ color: '#1e3a6e' }}>·</span>
+              <span style={{ color: '#4aaa6a' }}>● Active</span>
             </div>
           </div>
         </div>
@@ -116,11 +116,11 @@ export default function RosterPage() {
             <div className="lw-stat-label">Members</div>
           </div>
           <div className="lw-stat">
-            <div className="lw-stat-val" style={{ color: '#e07030' }}>{totalPower(members)}</div>
+            <div className="lw-stat-val" style={{ color: '#f5a623' }}>{totalPower(members)}</div>
             <div className="lw-stat-label">Total Power</div>
           </div>
           <div className="lw-stat">
-            <div className="lw-stat-val" style={{ color: '#4a9a6a' }}>{members.filter(m => m.rank >= 4).length}</div>
+            <div className="lw-stat-val" style={{ color: '#4aaa6a' }}>{members.filter(m => m.rank >= 4).length}</div>
             <div className="lw-stat-label">Officers+</div>
           </div>
         </div>
@@ -149,12 +149,12 @@ export default function RosterPage() {
       {/* Add / Edit form */}
       {showForm && (
         <div className="lw-form-panel" style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#c8a840', marginBottom: 14 }}>{editId ? 'Edit Member' : 'Add Member'}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#7ab4f5', marginBottom: 14 }}>{editId ? 'Edit Member' : 'Add Member'}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
             <div style={{ gridColumn: 'span 2' }}>
               <label className="lw-form-label">Name *</label>
               <input className="lw-input" style={{ borderColor: dupWarning ? '#8a4020' : undefined }} placeholder="Member name" value={form.name} onChange={e => handleNameChange(e.target.value)} />
-              {dupWarning && <p style={{ color: '#c07040', fontSize: 11, marginTop: 4 }}>{dupWarning}</p>}
+              {dupWarning && <p style={{ color: '#e07030', fontSize: 11, marginTop: 4 }}>{dupWarning}</p>}
             </div>
             <div>
               <label className="lw-form-label">Rank</label>
@@ -213,11 +213,11 @@ export default function RosterPage() {
                     const globalIdx = filtered.indexOf(m)
                     return (
                       <tr key={m.id}>
-                        <td style={{ color: '#3a2a10', fontSize: 11, width: 32 }}>{globalIdx + 1}</td>
-                        <td style={{ fontWeight: 500, color: '#e8d8a0' }}>{m.name}</td>
+                        <td style={{ color: '#1a3060', fontSize: 11, width: 32 }}>{globalIdx + 1}</td>
+                        <td style={{ fontWeight: 700, color: '#f5f0e0' }}>{m.name}</td>
                         <td><span className={`rank-badge rank-${m.rank}`}>R{m.rank}</span></td>
                         <td style={{ textAlign: 'right' }} className="power-text">{formatPower(m.power)}</td>
-                        <td style={{ color: '#4a3820', fontSize: 12 }}>{m.notes || '—'}</td>
+                        <td style={{ color: '#2a4a7a', fontSize: 12 }}>{m.notes || '—'}</td>
                         <td>
                           <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                             <button className="btn-ghost" onClick={() => openEdit(m)}>Edit</button>

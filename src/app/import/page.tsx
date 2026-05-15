@@ -65,9 +65,9 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
       style={{
         padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 600,
         cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6,
-        background: active ? 'linear-gradient(135deg, #b8860b, #8b6508)' : 'transparent',
-        border: active ? 'none' : '1px solid #2a1f0a',
-        color: active ? '#fff8e0' : '#7a6030',
+        background: active ? 'linear-gradient(135deg, #2a5090, #1a3060)' : 'transparent',
+        border: active ? 'none' : '1px solid #1e3a6e',
+        color: active ? '#fff8e0' : '#4a7ab5',
       }}
     >
       {children}
@@ -81,18 +81,18 @@ function DropZone({ icon, title, subtitle, preview, onClick }: { icon: string; t
     <div
       onClick={onClick}
       style={{
-        border: '2px dashed #2a1f0a', borderRadius: 10, padding: '32px 20px',
+        border: '2px dashed #1e3a6e', borderRadius: 10, padding: '32px 20px',
         textAlign: 'center', cursor: 'pointer', transition: 'border-color 0.15s',
         marginBottom: 12,
       }}
-      onMouseEnter={e => (e.currentTarget.style.borderColor = '#b8860b')}
-      onMouseLeave={e => (e.currentTarget.style.borderColor = '#2a1f0a')}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = '#2a5090')}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = '#1e3a6e')}
     >
       {preview || (
         <>
           <div style={{ fontSize: 36, marginBottom: 10 }}>{icon}</div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#c8a840', marginBottom: 4 }}>{title}</div>
-          <div style={{ fontSize: 11, color: '#4a3820' }}>{subtitle}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#7ab4f5', marginBottom: 4 }}>{title}</div>
+          <div style={{ fontSize: 11, color: '#2a4a7a' }}>{subtitle}</div>
         </>
       )}
     </div>
@@ -305,7 +305,7 @@ export default function ImportPage() {
 
   const hasPreview = rosterRows.length > 0 || duelRows.length > 0
 
-  const actionColor = (a: string) => a === 'add' ? { bg: '#081a0a', border: '#1a4a1a', color: '#60c060' } : a === 'update' ? { bg: '#080e1a', border: '#1a2a4a', color: '#6090e0' } : { bg: '#141210', border: '#2a1f0a', color: '#4a3820' }
+  const actionColor = (a: string) => a === 'add' ? { bg: '#081a0a', border: '#1a4a1a', color: '#60c060' } : a === 'update' ? { bg: '#080e1a', border: '#1a2a4a', color: '#6090e0' } : { bg: '#0a1220', border: '#1e3a6e', color: '#2a4a7a' }
 
   return (
     <div style={{ maxWidth: 780 }}>
@@ -315,7 +315,7 @@ export default function ImportPage() {
           <i className="ti ti-upload" aria-hidden="true" />
           Import Data
         </div>
-        <div style={{ fontSize: 12, color: '#4a3820' }}>Import from screenshots, video recordings, or paste from Google Sheets.</div>
+        <div style={{ fontSize: 12, color: '#2a4a7a' }}>Import from screenshots, video recordings, or paste from Google Sheets.</div>
       </div>
 
       {/* Page mode tabs */}
@@ -332,8 +332,8 @@ export default function ImportPage() {
       {pageMode === 'train_history' && (
         <div>
           <div className="lw-form-panel" style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#c8a840', marginBottom: 6 }}>Paste from Google Sheets</div>
-            <div style={{ fontSize: 12, color: '#4a3820', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#7ab4f5', marginBottom: 6 }}>Paste from Google Sheets</div>
+            <div style={{ fontSize: 12, color: '#2a4a7a', marginBottom: 12 }}>
               Select your data (Date · Conductor · VIP columns), copy, and paste below. No header row needed.
             </div>
             <textarea
@@ -356,9 +356,9 @@ export default function ImportPage() {
 
           {trainRows.length > 0 && (
             <div className="lw-card" style={{ marginBottom: 14 }}>
-              <div style={{ padding: '10px 14px', borderBottom: '1px solid #2a1f0a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#c8a840' }}>{trainRows.length} rows parsed</span>
-                <span style={{ fontSize: 11, color: '#4a3820' }}>{trainRows.filter(r => r.valid).length} valid · {trainRows.filter(r => !r.valid).length} invalid</span>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid #1e3a6e', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#7ab4f5' }}>{trainRows.length} rows parsed</span>
+                <span style={{ fontSize: 11, color: '#2a4a7a' }}>{trainRows.filter(r => r.valid).length} valid · {trainRows.filter(r => !r.valid).length} invalid</span>
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table className="lw-table" style={{ minWidth: 480 }}>
@@ -366,9 +366,9 @@ export default function ImportPage() {
                   <tbody>
                     {trainRows.map((row, i) => (
                       <tr key={i} style={{ opacity: row.valid ? 1 : 0.4 }}>
-                        <td style={{ color: '#7a6030', fontSize: 12 }}>{row.date || '—'}</td>
+                        <td style={{ color: '#4a7ab5', fontSize: 12 }}>{row.date || '—'}</td>
                         <td style={{ fontWeight: 500 }}>{row.conductor || '—'}</td>
-                        <td style={{ color: '#7a6030' }}>{row.vip || '—'}</td>
+                        <td style={{ color: '#4a7ab5' }}>{row.vip || '—'}</td>
                         <td>
                           {row.valid
                             ? <span style={{ fontSize: 10, fontWeight: 700, background: '#081a0a', border: '1px solid #1a4a1a', color: '#60c060', padding: '2px 7px', borderRadius: 4 }}>READY</span>
@@ -380,7 +380,7 @@ export default function ImportPage() {
                   </tbody>
                 </table>
               </div>
-              <div style={{ padding: '10px 14px', borderTop: '1px solid #2a1f0a', display: 'flex', gap: 8 }}>
+              <div style={{ padding: '10px 14px', borderTop: '1px solid #1e3a6e', display: 'flex', gap: 8 }}>
                 <button className="btn-gold" onClick={handleSaveTrainHistory} disabled={trainSaving || trainRows.filter(r => r.valid).length === 0}>
                   <i className="ti ti-database-import" aria-hidden="true" />
                   {trainSaving ? 'Saving…' : `Import ${trainRows.filter(r => r.valid).length} Entries`}
@@ -411,7 +411,7 @@ export default function ImportPage() {
           {/* Upload mode */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
             {(['screenshot', 'video'] as UploadMode[]).map(m => (
-              <button key={m} onClick={() => { setUploadMode(m); reset() }} style={{ padding: '4px 12px', borderRadius: 5, fontSize: 11, fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s', background: uploadMode === m ? '#1a1400' : 'transparent', border: uploadMode === m ? '1px solid #b8860b' : '1px solid #2a1f0a', color: uploadMode === m ? '#ffd700' : '#4a3820' }}>
+              <button key={m} onClick={() => { setUploadMode(m); reset() }} style={{ padding: '4px 12px', borderRadius: 5, fontSize: 11, fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s', background: uploadMode === m ? '#0e1e40' : 'transparent', border: uploadMode === m ? '1px solid #2a5090' : '1px solid #1e3a6e', color: uploadMode === m ? '#f5a623' : '#2a4a7a' }}>
                 {m === 'screenshot' ? '📸 Screenshot' : '🎥 Video'}
               </button>
             ))}
@@ -420,16 +420,16 @@ export default function ImportPage() {
           {/* Duel day selector */}
           {importMode === 'duel' && (
             <div className="lw-form-panel" style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#7a6030', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Which day is this from?</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#4a7ab5', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Which day is this from?</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>
                 {Object.entries(DUEL_DAYS).map(([day, theme]) => (
-                  <button key={day} onClick={() => setSelectedDay(Number(day))} style={{ borderRadius: 7, padding: '8px 4px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s', background: selectedDay === Number(day) ? 'linear-gradient(135deg, #b8860b, #8b6508)' : '#0f0e0a', border: selectedDay === Number(day) ? 'none' : '1px solid #2a1f0a', color: selectedDay === Number(day) ? '#fff8e0' : '#4a3820' }}>
+                  <button key={day} onClick={() => setSelectedDay(Number(day))} style={{ borderRadius: 7, padding: '8px 4px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s', background: selectedDay === Number(day) ? 'linear-gradient(135deg, #2a5090, #1a3060)' : '#0f0e0a', border: selectedDay === Number(day) ? 'none' : '1px solid #1e3a6e', color: selectedDay === Number(day) ? '#fff8e0' : '#2a4a7a' }}>
                     <div style={{ fontSize: 10, fontWeight: 700 }}>Day {day}</div>
                     <div style={{ fontSize: 9, marginTop: 2, opacity: 0.8 }}>{theme.short}</div>
                   </button>
                 ))}
               </div>
-              {currentEvent && <div style={{ fontSize: 11, color: '#3a2a10', marginTop: 10 }}>Saving to week of {new Date(currentEvent.week_start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>}
+              {currentEvent && <div style={{ fontSize: 11, color: '#1a3060', marginTop: 10 }}>Saving to week of {new Date(currentEvent.week_start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>}
             </div>
           )}
 
@@ -472,9 +472,9 @@ export default function ImportPage() {
 
           {/* Progress */}
           {progress && (
-            <div style={{ background: '#141210', border: '1px solid #2a1f0a', borderRadius: 8, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 14, height: 14, border: '2px solid #b8860b', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
-              <span style={{ fontSize: 12, color: '#c8a840' }}>{progress}</span>
+            <div style={{ background: '#0a1220', border: '1px solid #1e3a6e', borderRadius: 8, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 14, height: 14, border: '2px solid #2a5090', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: '#7ab4f5' }}>{progress}</span>
             </div>
           )}
 
@@ -484,9 +484,9 @@ export default function ImportPage() {
           {/* Roster preview */}
           {importMode === 'roster' && rosterRows.length > 0 && (
             <div className="lw-card" style={{ marginBottom: 14 }}>
-              <div style={{ padding: '10px 14px', borderBottom: '1px solid #2a1f0a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#c8a840' }}>{rosterRows.length} members extracted</span>
-                <span style={{ fontSize: 11, color: '#4a3820' }}>Click a row to skip it</span>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid #1e3a6e', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#7ab4f5' }}>{rosterRows.length} members extracted</span>
+                <span style={{ fontSize: 11, color: '#2a4a7a' }}>Click a row to skip it</span>
               </div>
               <table className="lw-table">
                 <thead><tr><th>Name</th><th>Rank</th><th style={{ textAlign: 'right' }}>Power</th><th style={{ textAlign: 'center' }}>Action</th></tr></thead>
@@ -506,7 +506,7 @@ export default function ImportPage() {
                   })}
                 </tbody>
               </table>
-              <div style={{ padding: '10px 14px', borderTop: '1px solid #2a1f0a', display: 'flex', gap: 8 }}>
+              <div style={{ padding: '10px 14px', borderTop: '1px solid #1e3a6e', display: 'flex', gap: 8 }}>
                 <button className="btn-gold" onClick={handleSaveRoster} disabled={saving}>
                   <i className="ti ti-database-import" aria-hidden="true" />
                   {saving ? 'Saving…' : `Save ${rosterRows.filter(r => r.action !== 'skip').length} Members`}
@@ -519,9 +519,9 @@ export default function ImportPage() {
           {/* Duel preview */}
           {importMode === 'duel' && duelRows.length > 0 && (
             <div className="lw-card" style={{ marginBottom: 14 }}>
-              <div style={{ padding: '10px 14px', borderBottom: '1px solid #2a1f0a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#c8a840' }}>{duelRows.length} scores extracted — Day {selectedDay}: {DUEL_DAYS[selectedDay].name}</span>
-                <span style={{ fontSize: 11, color: '#4a3820' }}>Unmatched = not in roster</span>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid #1e3a6e', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#7ab4f5' }}>{duelRows.length} scores extracted — Day {selectedDay}: {DUEL_DAYS[selectedDay].name}</span>
+                <span style={{ fontSize: 11, color: '#2a4a7a' }}>Unmatched = not in roster</span>
               </div>
               <table className="lw-table">
                 <thead><tr><th>Name</th><th style={{ textAlign: 'right' }}>Score</th><th style={{ textAlign: 'center' }}>Status</th></tr></thead>
@@ -540,7 +540,7 @@ export default function ImportPage() {
                   ))}
                 </tbody>
               </table>
-              <div style={{ padding: '10px 14px', borderTop: '1px solid #2a1f0a', display: 'flex', gap: 8 }}>
+              <div style={{ padding: '10px 14px', borderTop: '1px solid #1e3a6e', display: 'flex', gap: 8 }}>
                 <button className="btn-gold" onClick={handleSaveDuel} disabled={saving}>
                   <i className="ti ti-database-import" aria-hidden="true" />
                   {saving ? 'Saving…' : `Save ${duelRows.filter(r => r.matched || r.memberId).length} Scores`}
