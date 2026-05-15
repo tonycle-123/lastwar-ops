@@ -245,35 +245,57 @@ export default function ImportPage() {
     setProgress('Extracting frames from video…')
 
     try {
-      const frames = await extractFrames(videoFile, 1.5, (current, total) => {
-        setProgress(`Extracting frames… ${current} / ${total}`)
-      })
+      let frames: string[] = []
+      try {
+        frames = await extractFrames(videoFile, 1.5, (current, total) => {
+          setProgress(`Extracting frames… ${current} / ${total}`)
+        })
+      } catch (frameErr: any) {
+        throw new Error(`Could not extract frames: ${frameErr.message}. Try MP4 format.`)
+      }
 
-      setProgress(`Processing ${frames.length} frames with Claude Vision…`)
+      if (frames.length === 0) {
+        throw new Error('No frames could be extracted. Try re-recording or use a screenshot instead.')
+      }
+
+      setProgress(`Extracted ${frames.length} frames — analyzing with Claude Vision…`)
 
       const allResults: any[][] = []
+      let failedFrames = 0
+
       for (let i = 0; i < frames.length; i++) {
-        setProgress(`Analyzing frame ${i + 1} of ${frames.length}…`)
+        setProgress(`Analyzing frame ${i + 1} of ${frames.length} — ${allResults.length} results so far…`)
         try {
           const result = await processFrame(frames[i], 'image/jpeg')
           if (result.length > 0) allResults.push(result)
-        } catch {
-          // Skip frames that fail — likely blank/transition frames
+        } catch (frameErr: any) {
+          failedFrames++
+          if (failedFrames > 3 && allResults.length === 0) {
+            throw new Error(`Claude Vision failed on multiple frames: ${frameErr.message}`)
+          }
         }
       }
 
-      setProgress('Merging and deduplicating results…')
+      if (allResults.length === 0) {
+        throw new Error('No data found in any frames. Make sure the video clearly shows member names and scores.')
+      }
+
+      setProgress(`Merging results from ${allResults.length} frames…`)
 
       const merged = importMode === 'roster'
         ? mergeRosterResults(allResults)
         : mergeDuelResults(allResults)
+
+      if (merged.length === 0) {
+        throw new Error('Frames processed but no members found. Try a clearer recording.')
+      }
 
       if (importMode === 'roster') setRosterRows(buildRosterRows(merged))
       else setDuelRows(buildDuelRows(merged))
 
       setProgress(null)
     } catch (err: any) {
-      setError(err.message)
+      setError(err.message || 'Video processing failed. Please try again.')
       setProgress(null)
     } finally {
       setProcessing(false)
