@@ -4,12 +4,10 @@ import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Member, DuelEvent, DUEL_DAYS } from '@/lib/types'
 
-type PageMode     = 'vision' | 'train_history'
 type ImportMode   = 'roster' | 'duel'
 type UploadMode   = 'screenshot' | 'video'
 type RosterRow    = { name: string; rank: number; power: number; action: 'add' | 'update' | 'skip'; memberId?: string }
 type DuelRow      = { name: string; score: number; memberId?: string; matched: boolean }
-type TrainRow     = { date: string; conductor: string; vip: string; valid: boolean; error?: string }
 
 function formatPower(p: number) {
   if (p >= 1_000_000_000) return (p / 1_000_000_000).toFixed(2) + 'B'
@@ -104,10 +102,6 @@ export default function ImportPage() {
   const [duelRows, setDuelRows]         = useState<DuelRow[]>([])
   const [members, setMembers]           = useState<Member[]>([])
   const [currentEvent, setCurrentEvent] = useState<DuelEvent | null>(null)
-  const [pageMode, setPageMode]         = useState<PageMode>('vision')
-  const [pasteText, setPasteText]       = useState('')
-  const [trainRows, setTrainRows]       = useState<TrainRow[]>([])
-  const [trainSaving, setTrainSaving]   = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -347,68 +341,6 @@ export default function ImportPage() {
     setSuccess(`✅ ${saved} scores saved for Day ${selectedDay} — ${DUEL_DAYS[selectedDay].name}.`)
   }
 
-  // Parse pasted Google Sheets data (tab-separated)
-  function parsePaste(text: string): TrainRow[] {
-    const lines = text.trim().split('\n').filter(l => l.trim())
-    return lines.map(line => {
-      const cols = line.split('\t').map(c => c.trim())
-      const dateRaw   = cols[0] || ''
-      const conductor = cols[1] || ''
-      const vip       = cols[2] || ''
-
-      // Try to parse the date — supports M/D/YYYY, MM/DD/YYYY, YYYY-MM-DD
-      let dateStr = ''
-      let valid   = true
-      let error   = ''
-
-      if (!dateRaw) { valid = false; error = 'Missing date' }
-      else {
-        const d = new Date(dateRaw)
-        if (isNaN(d.getTime())) { valid = false; error = 'Invalid date: ' + dateRaw }
-        else dateStr = d.toISOString().split('T')[0]
-      }
-
-      if (!conductor) { valid = false; error = error || 'Missing conductor' }
-
-      return { date: dateStr, conductor, vip, valid, error }
-    })
-  }
-
-  function handleParsePaste() {
-    if (!pasteText.trim()) { setError('Please paste your Google Sheet data first'); return }
-    setError(null)
-    const rows = parsePaste(pasteText)
-    setTrainRows(rows)
-  }
-
-  async function handleSaveTrainHistory() {
-    const validRows = trainRows.filter(r => r.valid)
-    if (validRows.length === 0) { setError('No valid rows to save'); return }
-    setTrainSaving(true)
-    setError(null)
-    let saved = 0
-    let skipped = 0
-
-    for (const row of validRows) {
-      const { error } = await supabase
-        .from('train_log')
-        .upsert({
-          log_date:       row.date,
-          conductor_name: row.conductor,
-          vip_name:       row.vip || null,
-          conductor_id:   null,
-          vip_id:         null,
-        }, { onConflict: 'log_date' })
-      if (error) skipped++
-      else saved++
-    }
-
-    setTrainSaving(false)
-    setTrainRows([])
-    setPasteText('')
-    setSuccess(`✅ ${saved} train log entries imported!${skipped > 0 ? ' ' + skipped + ' skipped due to errors.' : ''}`)
-  }
-
   function toggleRosterAction(i: number) {
     setRosterRows(prev => prev.map((r, idx) =>
       idx !== i ? r : {
@@ -423,115 +355,9 @@ export default function ImportPage() {
   return (
     <div className="max-w-3xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-100">Import</h1>
-        <p className="text-gray-400 text-sm mt-0.5">Import data from screenshots, videos, or paste from Google Sheets.</p>
+        <h1 className="text-2xl font-bold text-gray-100">Screenshot / Video Import</h1>
+        <p className="text-gray-400 text-sm mt-0.5">Upload a screenshot or screen recording and Claude will extract the data.</p>
       </div>
-
-      {/* Top-level page mode */}
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => { setPageMode('vision'); reset(); setError(null); setSuccess(null) }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${pageMode === 'vision' ? 'bg-yellow-400 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-gray-100 border border-gray-700'}`}
-        >
-          📸 Screenshot / Video
-        </button>
-        <button
-          onClick={() => { setPageMode('train_history'); reset(); setError(null); setSuccess(null) }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${pageMode === 'train_history' ? 'bg-yellow-400 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-gray-100 border border-gray-700'}`}
-        >
-          🚂 Train History
-        </button>
-      </div>
-
-      {/* ── TRAIN HISTORY PASTE ── */}
-      {pageMode === 'train_history' && (
-        <div>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-4">
-            <h2 className="text-sm font-semibold text-gray-100 mb-1">Paste from Google Sheets</h2>
-            <p className="text-xs text-gray-500 mb-4">
-              Select your data in Google Sheets (Date · Conductor · VIP columns), copy it, and paste below. No header row needed.
-            </p>
-            <textarea
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-yellow-400 font-mono"
-              rows={8}
-              placeholder={"5/1/2025\tPlayerOne\tPlayerTwo\n5/2/2025\tPlayerThree\t\n5/3/2025\tPlayerFour\tPlayerFive"}
-              value={pasteText}
-              onChange={e => { setPasteText(e.target.value); setTrainRows([]) }}
-            />
-            <button
-              onClick={handleParsePaste}
-              className="mt-3 bg-yellow-400 hover:bg-yellow-300 text-gray-950 font-bold px-5 py-2 rounded-lg text-sm transition-colors"
-            >
-              Preview Import
-            </button>
-          </div>
-
-          {error   && <p className="text-red-400 text-sm mb-4 bg-red-950/30 border border-red-800 rounded-lg px-4 py-3">{error}</p>}
-          {success && <p className="text-green-400 text-sm mb-4 bg-green-950/30 border border-green-800 rounded-lg px-4 py-3">{success}</p>}
-
-          {trainRows.length > 0 && (
-            <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mb-4">
-              <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-                <p className="text-sm font-semibold text-gray-100">{trainRows.length} rows parsed</p>
-                <p className="text-xs text-gray-500">
-                  {trainRows.filter(r => r.valid).length} valid · {trainRows.filter(r => !r.valid).length} invalid
-                </p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[480px]">
-                  <thead>
-                    <tr className="text-gray-500 text-xs uppercase tracking-wide border-b border-gray-800">
-                      <th className="text-left px-4 py-2 font-medium">Date</th>
-                      <th className="text-left px-4 py-2 font-medium">Conductor</th>
-                      <th className="text-left px-4 py-2 font-medium">VIP</th>
-                      <th className="text-left px-4 py-2 font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {trainRows.map((row, i) => (
-                      <tr key={i} className={`border-b border-gray-800 last:border-0 ${!row.valid ? 'opacity-50' : ''}`}>
-                        <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{row.date || '—'}</td>
-                        <td className="px-4 py-2 text-gray-100 font-medium">{row.conductor || '—'}</td>
-                        <td className="px-4 py-2 text-gray-400">{row.vip || '—'}</td>
-                        <td className="px-4 py-2">
-                          {row.valid
-                            ? <span className="text-xs bg-green-900/50 text-green-400 px-2 py-0.5 rounded">ready</span>
-                            : <span className="text-xs bg-red-900/50 text-red-400 px-2 py-0.5 rounded">{row.error}</span>
-                          }
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-4 py-3 border-t border-gray-800 flex gap-3">
-                <button
-                  onClick={handleSaveTrainHistory}
-                  disabled={trainSaving || trainRows.filter(r => r.valid).length === 0}
-                  className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-gray-950 font-bold px-5 py-2 rounded-lg text-sm transition-colors"
-                >
-                  {trainSaving ? 'Saving…' : `Import ${trainRows.filter(r => r.valid).length} Entries`}
-                </button>
-                <button
-                  onClick={() => { setTrainRows([]); setPasteText('') }}
-                  className="text-gray-400 hover:text-gray-200 px-4 py-2 rounded-lg text-sm border border-gray-700 transition-colors"
-                >
-                  Clear
-                </button>
-              </div>
-              {trainRows.some(r => !r.valid) && (
-                <p className="px-4 pb-3 text-xs text-orange-400">
-                  ⚠️ Invalid rows will be skipped. Fix them in your Google Sheet and re-paste if needed.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── VISION IMPORT ── */}
-      {pageMode === 'vision' && (
-      <div>
 
       {/* Import mode toggle */}
       <div className="flex gap-2 mb-4">
@@ -777,8 +603,6 @@ export default function ImportPage() {
             </p>
           )}
         </div>
-      )}
-    </div>
       )}
     </div>
   )

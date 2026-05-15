@@ -1,786 +1,428 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Member, DuelEvent, DUEL_DAYS } from '@/lib/types'
+import { Member, TrainLog } from '@/lib/types'
 
-type PageMode     = 'vision' | 'train_history'
-type ImportMode   = 'roster' | 'duel'
-type UploadMode   = 'screenshot' | 'video'
-type RosterRow    = { name: string; rank: number; power: number; action: 'add' | 'update' | 'skip'; memberId?: string }
-type DuelRow      = { name: string; score: number; memberId?: string; matched: boolean }
-type TrainRow     = { date: string; conductor: string; vip: string; valid: boolean; error?: string }
-
-function formatPower(p: number) {
-  if (p >= 1_000_000_000) return (p / 1_000_000_000).toFixed(2) + 'B'
-  if (p >= 1_000_000)     return (p / 1_000_000).toFixed(1) + 'M'
-  if (p >= 1_000)         return (p / 1_000).toFixed(1) + 'K'
-  return p.toLocaleString()
+function formatDate(dateStr: string) {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function getMondayOf(date: Date): string {
-  const d = new Date(date)
-  const day = d.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  d.setDate(d.getDate() + diff)
-  return d.toISOString().split('T')[0]
+function shortDate(dateStr: string) {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-// Extract frames from a video file using canvas
-async function extractFrames(
-  file: File,
-  intervalSeconds = 1.5,
-  onProgress?: (current: number, total: number) => void
-): Promise<string[]> {
-  return new Promise((resolve, reject) => {
-    const video    = document.createElement('video')
-    const canvas   = document.createElement('canvas')
-    const ctx      = canvas.getContext('2d')!
-    const frames:  string[] = []
-    const url      = URL.createObjectURL(file)
-
-    video.src      = url
-    video.muted    = true
-    video.playsInline = true
-
-    video.onloadedmetadata = () => {
-      canvas.width  = video.videoWidth
-      canvas.height = video.videoHeight
-      const duration    = video.duration
-      const totalFrames = Math.floor(duration / intervalSeconds)
-      let currentFrame  = 0
-
-      function captureFrame(time: number) {
-        video.currentTime = time
-      }
-
-      video.onseeked = () => {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-        frames.push(canvas.toDataURL('image/jpeg', 0.85).split(',')[1])
-        currentFrame++
-        onProgress?.(currentFrame, totalFrames)
-
-        const nextTime = currentFrame * intervalSeconds
-        if (nextTime < duration) {
-          captureFrame(nextTime)
-        } else {
-          URL.revokeObjectURL(url)
-          resolve(frames)
-        }
-      }
-
-      video.onerror = () => reject(new Error('Failed to load video'))
-      captureFrame(0)
-    }
-
-    video.onerror = () => reject(new Error('Failed to load video — try a different format'))
-    video.load()
-  })
+function todayStr() {
+  return new Date().toISOString().split('T')[0]
 }
 
-export default function ImportPage() {
-  const supabase   = useRef(createClient()).current
-  const fileRef    = useRef<HTMLInputElement>(null)
-  const videoRef   = useRef<HTMLInputElement>(null)
+const EMPTY_FORM = {
+  log_date: todayStr(),
+  conductor_id: '',
+  conductor_name: '',
+  vip_id: '',
+  vip_name: '',
+  notes: '',
+}
 
-  const [importMode, setImportMode]     = useState<ImportMode>('roster')
-  const [uploadMode, setUploadMode]     = useState<UploadMode>('screenshot')
-  const [selectedDay, setSelectedDay]   = useState<number>(1)
+// Autocomplete input that filters from roster
+function MemberAutocomplete({
+  label,
+  required,
+  selectedId,
+  selectedName,
+  members,
+  onSelect,
+  onManualChange,
+  recentDates,
+}: {
+  label: string
+  required?: boolean
+  selectedId: string
+  selectedName: string
+  members: Member[]
+  onSelect: (id: string, name: string) => void
+  onManualChange: (name: string) => void
+  recentDates?: string[] // dates this person was active in last 14 days
+}) {
+  const [query, setQuery] = useState(selectedName)
+  const [open, setOpen]   = useState(false)
 
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [imageBase64, setImageBase64]   = useState<string | null>(null)
-  const [mediaType, setMediaType]       = useState<string>('image/png')
+  useEffect(() => { setQuery(selectedName) }, [selectedName])
 
-  const [videoFile, setVideoFile]       = useState<File | null>(null)
-  const [videoName, setVideoName]       = useState<string>('')
+  const filtered = members.filter(m =>
+    m.name.toLowerCase().includes(query.toLowerCase())
+  )
 
-  const [processing, setProcessing]     = useState(false)
-  const [saving, setSaving]             = useState(false)
-  const [error, setError]               = useState<string | null>(null)
-  const [success, setSuccess]           = useState<string | null>(null)
-  const [progress, setProgress]         = useState<string | null>(null)
-
-  const [rosterRows, setRosterRows]     = useState<RosterRow[]>([])
-  const [duelRows, setDuelRows]         = useState<DuelRow[]>([])
-  const [members, setMembers]           = useState<Member[]>([])
-  const [currentEvent, setCurrentEvent] = useState<DuelEvent | null>(null)
-  const [pageMode, setPageMode]         = useState<PageMode>('vision')
-  const [pasteText, setPasteText]       = useState('')
-  const [trainRows, setTrainRows]       = useState<TrainRow[]>([])
-  const [trainSaving, setTrainSaving]   = useState(false)
-
-  useEffect(() => {
-    async function load() {
-      const { data } = await supabase.from('members').select('*').eq('active', true)
-      setMembers(data || [])
-      const monday = getMondayOf(new Date())
-      const { data: existing } = await supabase
-        .from('duel_events').select('*').eq('week_start', monday).single()
-      if (existing) setCurrentEvent(existing)
-    }
-    load()
-  }, [])
-
-  function reset() {
-    setRosterRows([])
-    setDuelRows([])
-    setImagePreview(null)
-    setImageBase64(null)
-    setVideoFile(null)
-    setVideoName('')
-    setError(null)
-    setSuccess(null)
-    setProgress(null)
-    if (fileRef.current)  fileRef.current.value  = ''
-    if (videoRef.current) videoRef.current.value = ''
-  }
-
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    reset()
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      setImagePreview(result)
-      setImageBase64(result.split(',')[1])
-      setMediaType(file.type || 'image/png')
-    }
-    reader.readAsDataURL(file)
-  }
-
-  function handleVideoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    reset()
-    setVideoFile(file)
-    setVideoName(file.name)
-  }
-
-  // Send one frame to the appropriate API route
-  async function processFrame(base64: string, mType: string): Promise<any[]> {
-    const endpoint = importMode === 'roster' ? '/api/import/roster' : '/api/import/duel'
-    const body     = importMode === 'roster'
-      ? { imageBase64: base64, mediaType: mType }
-      : { imageBase64: base64, mediaType: mType, day: selectedDay }
-
-    const res  = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const data = await res.json()
-    if (data.error) throw new Error(data.error)
-    return importMode === 'roster' ? data.members : data.scores
-  }
-
-  // Merge and deduplicate roster results across frames
-  function mergeRosterResults(allResults: any[][]): any[] {
-    const map = new Map<string, any>()
-    for (const frame of allResults) {
-      for (const m of frame) {
-        const key = m.name.toLowerCase().trim()
-        if (!map.has(key) || (m.power > 0 && map.get(key).power === 0)) {
-          map.set(key, m)
-        }
-      }
-    }
-    return Array.from(map.values())
-  }
-
-  // Merge and deduplicate duel score results across frames
-  function mergeDuelResults(allResults: any[][]): any[] {
-    const map = new Map<string, any>()
-    for (const frame of allResults) {
-      for (const s of frame) {
-        const key = s.name.toLowerCase().trim()
-        if (!map.has(key) || s.score > map.get(key).score) {
-          map.set(key, s)
-        }
-      }
-    }
-    return Array.from(map.values())
-  }
-
-  function buildRosterRows(extracted: any[]): RosterRow[] {
-    return extracted.map((m: any) => {
-      const existing = members.find(em => em.name.toLowerCase() === m.name.toLowerCase())
-      return {
-        name:     m.name,
-        rank:     m.rank || 3,
-        power:    m.power || 0,
-        action:   existing ? 'update' : 'add',
-        memberId: existing?.id,
-      }
-    })
-  }
-
-  function buildDuelRows(extracted: any[]): DuelRow[] {
-    return extracted.map((s: any) => {
-      const existing = members.find(m => m.name.toLowerCase() === s.name.toLowerCase())
-      return {
-        name:     s.name,
-        score:    s.score || 0,
-        memberId: existing?.id,
-        matched:  !!existing,
-      }
-    })
-  }
-
-  async function handleExtractScreenshot() {
-    if (!imageBase64) { setError('Please upload a screenshot first'); return }
-    setProcessing(true)
-    setError(null)
-    setSuccess(null)
-    try {
-      const results = await processFrame(imageBase64, mediaType)
-      if (importMode === 'roster') setRosterRows(buildRosterRows(results))
-      else setDuelRows(buildDuelRows(results))
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setProcessing(false)
-    }
-  }
-
-  async function handleExtractVideo() {
-    if (!videoFile) { setError('Please upload a video first'); return }
-    setProcessing(true)
-    setError(null)
-    setSuccess(null)
-    setProgress('Extracting frames from video…')
-
-    try {
-      let frames: string[] = []
-      try {
-        frames = await extractFrames(videoFile, 1.5, (current, total) => {
-          setProgress(`Extracting frames… ${current} / ${total}`)
-        })
-      } catch (frameErr: any) {
-        throw new Error(`Could not extract frames: ${frameErr.message}. Try MP4 format.`)
-      }
-
-      if (frames.length === 0) {
-        throw new Error('No frames could be extracted. Try re-recording or use a screenshot instead.')
-      }
-
-      setProgress(`Extracted ${frames.length} frames — analyzing with Claude Vision…`)
-
-      const allResults: any[][] = []
-      let failedFrames = 0
-
-      for (let i = 0; i < frames.length; i++) {
-        setProgress(`Analyzing frame ${i + 1} of ${frames.length} — ${allResults.length} results so far…`)
-        try {
-          const result = await processFrame(frames[i], 'image/jpeg')
-          if (result.length > 0) allResults.push(result)
-        } catch (frameErr: any) {
-          failedFrames++
-          if (failedFrames > 3 && allResults.length === 0) {
-            throw new Error(`Claude Vision failed on multiple frames: ${frameErr.message}`)
-          }
-        }
-      }
-
-      if (allResults.length === 0) {
-        throw new Error('No data found in any frames. Make sure the video clearly shows member names and scores.')
-      }
-
-      setProgress(`Merging results from ${allResults.length} frames…`)
-
-      const merged = importMode === 'roster'
-        ? mergeRosterResults(allResults)
-        : mergeDuelResults(allResults)
-
-      if (merged.length === 0) {
-        throw new Error('Frames processed but no members found. Try a clearer recording.')
-      }
-
-      if (importMode === 'roster') setRosterRows(buildRosterRows(merged))
-      else setDuelRows(buildDuelRows(merged))
-
-      setProgress(null)
-    } catch (err: any) {
-      setError(err.message || 'Video processing failed. Please try again.')
-      setProgress(null)
-    } finally {
-      setProcessing(false)
-    }
-  }
-
-  async function handleSaveRoster() {
-    setSaving(true)
-    setError(null)
-    let saved = 0
-    for (const row of rosterRows) {
-      if (row.action === 'skip') continue
-      const payload = { name: row.name, rank: row.rank, power: row.power }
-      if (row.action === 'update' && row.memberId) {
-        await supabase.from('members').update(payload).eq('id', row.memberId)
-      } else {
-        await supabase.from('members').insert({ ...payload, active: true })
-      }
-      saved++
-    }
-    const { data } = await supabase.from('members').select('*').eq('active', true)
-    setMembers(data || [])
-    reset()
-    setSaving(false)
-    setSuccess(`✅ ${saved} members saved to roster.`)
-  }
-
-  async function handleSaveDuel() {
-    if (!currentEvent) { setError('No active duel event found. Visit the Duel page first.'); return }
-    setSaving(true)
-    setError(null)
-    let saved = 0
-    for (const row of duelRows) {
-      if (!row.memberId) continue
-      await supabase.from('duel_scores').upsert(
-        { event_id: currentEvent.id, member_id: row.memberId, day: selectedDay, score: row.score },
-        { onConflict: 'event_id,member_id,day' }
-      )
-      saved++
-    }
-    reset()
-    setSaving(false)
-    setSuccess(`✅ ${saved} scores saved for Day ${selectedDay} — ${DUEL_DAYS[selectedDay].name}.`)
-  }
-
-  // Parse pasted Google Sheets data (tab-separated)
-  function parsePaste(text: string): TrainRow[] {
-    const lines = text.trim().split('\n').filter(l => l.trim())
-    return lines.map(line => {
-      const cols = line.split('\t').map(c => c.trim())
-      const dateRaw   = cols[0] || ''
-      const conductor = cols[1] || ''
-      const vip       = cols[2] || ''
-
-      // Try to parse the date — supports M/D/YYYY, MM/DD/YYYY, YYYY-MM-DD
-      let dateStr = ''
-      let valid   = true
-      let error   = ''
-
-      if (!dateRaw) { valid = false; error = 'Missing date' }
-      else {
-        const d = new Date(dateRaw)
-        if (isNaN(d.getTime())) { valid = false; error = 'Invalid date: ' + dateRaw }
-        else dateStr = d.toISOString().split('T')[0]
-      }
-
-      if (!conductor) { valid = false; error = error || 'Missing conductor' }
-
-      return { date: dateStr, conductor, vip, valid, error }
-    })
-  }
-
-  function handleParsePaste() {
-    if (!pasteText.trim()) { setError('Please paste your Google Sheet data first'); return }
-    setError(null)
-    const rows = parsePaste(pasteText)
-    setTrainRows(rows)
-  }
-
-  async function handleSaveTrainHistory() {
-    const validRows = trainRows.filter(r => r.valid)
-    if (validRows.length === 0) { setError('No valid rows to save'); return }
-    setTrainSaving(true)
-    setError(null)
-    let saved = 0
-    let skipped = 0
-
-    for (const row of validRows) {
-      const { error } = await supabase
-        .from('train_log')
-        .upsert({
-          log_date:       row.date,
-          conductor_name: row.conductor,
-          vip_name:       row.vip || null,
-          conductor_id:   null,
-          vip_id:         null,
-        }, { onConflict: 'log_date' })
-      if (error) skipped++
-      else saved++
-    }
-
-    setTrainSaving(false)
-    setTrainRows([])
-    setPasteText('')
-    setSuccess(`✅ ${saved} train log entries imported!${skipped > 0 ? ' ' + skipped + ' skipped due to errors.' : ''}`)
-  }
-
-  function toggleRosterAction(i: number) {
-    setRosterRows(prev => prev.map((r, idx) =>
-      idx !== i ? r : {
-        ...r,
-        action: r.action === 'skip' ? (r.memberId ? 'update' : 'add') : 'skip'
-      }
-    ))
-  }
-
-  const hasPreview = rosterRows.length > 0 || duelRows.length > 0
+  const hasWarning = recentDates && recentDates.length > 0
 
   return (
-    <div className="max-w-3xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-100">Import</h1>
-        <p className="text-gray-400 text-sm mt-0.5">Import data from screenshots, videos, or paste from Google Sheets.</p>
-      </div>
-
-      {/* Top-level page mode */}
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => { setPageMode('vision'); reset(); setError(null); setSuccess(null) }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${pageMode === 'vision' ? 'bg-yellow-400 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-gray-100 border border-gray-700'}`}
-        >
-          📸 Screenshot / Video
-        </button>
-        <button
-          onClick={() => { setPageMode('train_history'); reset(); setError(null); setSuccess(null) }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${pageMode === 'train_history' ? 'bg-yellow-400 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-gray-100 border border-gray-700'}`}
-        >
-          🚂 Train History
-        </button>
-      </div>
-
-      {/* ── TRAIN HISTORY PASTE ── */}
-      {pageMode === 'train_history' && (
-        <div>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-4">
-            <h2 className="text-sm font-semibold text-gray-100 mb-1">Paste from Google Sheets</h2>
-            <p className="text-xs text-gray-500 mb-4">
-              Select your data in Google Sheets (Date · Conductor · VIP columns), copy it, and paste below. No header row needed.
-            </p>
-            <textarea
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-yellow-400 font-mono"
-              rows={8}
-              placeholder={"5/1/2025	PlayerOne	PlayerTwo
-5/2/2025	PlayerThree	
-5/3/2025	PlayerFour	PlayerFive"}
-              value={pasteText}
-              onChange={e => { setPasteText(e.target.value); setTrainRows([]) }}
-            />
-            <button
-              onClick={handleParsePaste}
-              className="mt-3 bg-yellow-400 hover:bg-yellow-300 text-gray-950 font-bold px-5 py-2 rounded-lg text-sm transition-colors"
-            >
-              Preview Import
-            </button>
-          </div>
-
-          {error   && <p className="text-red-400 text-sm mb-4 bg-red-950/30 border border-red-800 rounded-lg px-4 py-3">{error}</p>}
-          {success && <p className="text-green-400 text-sm mb-4 bg-green-950/30 border border-green-800 rounded-lg px-4 py-3">{success}</p>}
-
-          {trainRows.length > 0 && (
-            <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mb-4">
-              <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-                <p className="text-sm font-semibold text-gray-100">{trainRows.length} rows parsed</p>
-                <p className="text-xs text-gray-500">
-                  {trainRows.filter(r => r.valid).length} valid · {trainRows.filter(r => !r.valid).length} invalid
-                </p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[480px]">
-                  <thead>
-                    <tr className="text-gray-500 text-xs uppercase tracking-wide border-b border-gray-800">
-                      <th className="text-left px-4 py-2 font-medium">Date</th>
-                      <th className="text-left px-4 py-2 font-medium">Conductor</th>
-                      <th className="text-left px-4 py-2 font-medium">VIP</th>
-                      <th className="text-left px-4 py-2 font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {trainRows.map((row, i) => (
-                      <tr key={i} className={`border-b border-gray-800 last:border-0 ${!row.valid ? 'opacity-50' : ''}`}>
-                        <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{row.date || '—'}</td>
-                        <td className="px-4 py-2 text-gray-100 font-medium">{row.conductor || '—'}</td>
-                        <td className="px-4 py-2 text-gray-400">{row.vip || '—'}</td>
-                        <td className="px-4 py-2">
-                          {row.valid
-                            ? <span className="text-xs bg-green-900/50 text-green-400 px-2 py-0.5 rounded">ready</span>
-                            : <span className="text-xs bg-red-900/50 text-red-400 px-2 py-0.5 rounded">{row.error}</span>
-                          }
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-4 py-3 border-t border-gray-800 flex gap-3">
-                <button
-                  onClick={handleSaveTrainHistory}
-                  disabled={trainSaving || trainRows.filter(r => r.valid).length === 0}
-                  className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-gray-950 font-bold px-5 py-2 rounded-lg text-sm transition-colors"
-                >
-                  {trainSaving ? 'Saving…' : `Import ${trainRows.filter(r => r.valid).length} Entries`}
-                </button>
-                <button
-                  onClick={() => { setTrainRows([]); setPasteText('') }}
-                  className="text-gray-400 hover:text-gray-200 px-4 py-2 rounded-lg text-sm border border-gray-700 transition-colors"
-                >
-                  Clear
-                </button>
-              </div>
-              {trainRows.some(r => !r.valid) && (
-                <p className="px-4 pb-3 text-xs text-orange-400">
-                  ⚠️ Invalid rows will be skipped. Fix them in your Google Sheet and re-paste if needed.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
+    <div className="relative">
+      <label className="text-xs text-gray-400 mb-1 block">{label}{required && ' *'}</label>
+      <input
+        className={`w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none transition-colors ${
+          hasWarning ? 'border-orange-500 focus:border-orange-400' : 'border-gray-600 focus:border-yellow-400'
+        }`}
+        placeholder={`Search or type ${label.toLowerCase()}…`}
+        value={query}
+        onChange={e => {
+          setQuery(e.target.value)
+          onManualChange(e.target.value)
+          setOpen(true)
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      />
+      {/* Warning under input if recently active */}
+      {hasWarning && (
+        <p className="text-orange-400 text-xs mt-1">
+          ⚠️ Active in last 14 days: {recentDates!.map(shortDate).join(', ')}
+        </p>
       )}
-
-      {/* ── VISION IMPORT ── */}
-      {pageMode === 'vision' && (
-      <div>
-
-      {/* Import mode toggle */}
-      <div className="flex gap-2 mb-4">
-        {(['roster', 'duel'] as ImportMode[]).map(m => (
-          <button
-            key={m}
-            onClick={() => { setImportMode(m); reset() }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              importMode === m
-                ? 'bg-yellow-400 text-gray-950'
-                : 'bg-gray-800 text-gray-400 hover:text-gray-100 border border-gray-700'
-            }`}
-          >
-            {m === 'roster' ? '👥 Roster' : '⚔️ Duel Scores'}
-          </button>
-        ))}
-      </div>
-
-      {/* Upload mode toggle */}
-      <div className="flex gap-2 mb-5">
-        {(['screenshot', 'video'] as UploadMode[]).map(m => (
-          <button
-            key={m}
-            onClick={() => { setUploadMode(m); reset() }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              uploadMode === m
-                ? 'bg-gray-600 text-gray-100'
-                : 'bg-gray-800 text-gray-500 hover:text-gray-300 border border-gray-700'
-            }`}
-          >
-            {m === 'screenshot' ? '📸 Screenshot' : '🎥 Video'}
-          </button>
-        ))}
-      </div>
-
-      {/* Duel day selector */}
-      {importMode === 'duel' && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-5">
-          <p className="text-xs text-gray-400 mb-3 font-medium uppercase tracking-wide">Which day is this from?</p>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-            {Object.entries(DUEL_DAYS).map(([day, theme]) => (
+      {open && filtered.length > 0 && (
+        <div className="absolute z-20 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+          {filtered.map(m => {
+            const warn = recentDates && recentDates.length > 0 && m.name === selectedName
+            return (
               <button
-                key={day}
-                onClick={() => setSelectedDay(Number(day))}
-                className={`rounded-lg px-2 py-2 text-center transition-colors ${
-                  selectedDay === Number(day)
-                    ? 'bg-yellow-400 text-gray-950'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                }`}
+                key={m.id}
+                type="button"
+                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700 transition-colors flex items-center gap-2"
+                onMouseDown={() => {
+                  onSelect(m.id, m.name)
+                  setQuery(m.name)
+                  setOpen(false)
+                }}
               >
-                <p className="text-xs font-semibold">Day {day}</p>
-                <p className="text-xs mt-0.5 opacity-80">{theme.short}</p>
+                <span className="text-xs bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded">R{m.rank}</span>
+                <span className="text-gray-100">{m.name}</span>
+                {warn && <span className="text-orange-400 text-xs ml-auto">⚠️ recent</span>}
               </button>
-            ))}
-          </div>
-          {currentEvent && (
-            <p className="text-xs text-gray-600 mt-3">
-              Saving to current event — week of {new Date(currentEvent.week_start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Screenshot upload */}
-      {uploadMode === 'screenshot' && (
-        <>
-          <div
-            className="border-2 border-dashed border-gray-700 hover:border-yellow-400 rounded-xl p-8 text-center cursor-pointer transition-colors mb-4"
-            onClick={() => fileRef.current?.click()}
-          >
-            {imagePreview ? (
-              <img src={imagePreview} alt="Preview" className="max-h-64 mx-auto rounded-lg object-contain" />
-            ) : (
-              <div>
-                <p className="text-4xl mb-3">📸</p>
-                <p className="text-gray-300 font-medium">Click to upload screenshot</p>
-                <p className="text-gray-600 text-sm mt-1">PNG, JPG, or WEBP</p>
-              </div>
-            )}
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-          </div>
-          {imagePreview && !hasPreview && (
-            <button
-              onClick={handleExtractScreenshot}
-              disabled={processing}
-              className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-gray-950 font-bold py-3 rounded-xl text-sm transition-colors mb-4"
-            >
-              {processing ? '🔍 Extracting…' : '🔍 Extract Data with Claude Vision'}
-            </button>
-          )}
-        </>
-      )}
-
-      {/* Video upload */}
-      {uploadMode === 'video' && (
-        <>
-          <div
-            className="border-2 border-dashed border-gray-700 hover:border-yellow-400 rounded-xl p-8 text-center cursor-pointer transition-colors mb-4"
-            onClick={() => videoRef.current?.click()}
-          >
-            {videoName ? (
-              <div>
-                <p className="text-4xl mb-3">🎥</p>
-                <p className="text-gray-100 font-medium">{videoName}</p>
-                <p className="text-gray-500 text-xs mt-1">Click to change video</p>
-              </div>
-            ) : (
-              <div>
-                <p className="text-4xl mb-3">🎥</p>
-                <p className="text-gray-300 font-medium">Click to upload screen recording</p>
-                <p className="text-gray-600 text-sm mt-1">MP4, MOV, or WEBM · Frames extracted every 1.5 seconds</p>
-              </div>
-            )}
-            <input ref={videoRef} type="file" accept="video/*" className="hidden" onChange={handleVideoChange} />
-          </div>
-
-          {videoFile && !hasPreview && (
-            <button
-              onClick={handleExtractVideo}
-              disabled={processing}
-              className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-gray-950 font-bold py-3 rounded-xl text-sm transition-colors mb-4"
-            >
-              {processing ? '⏳ Processing video…' : '🎬 Extract Data from Video'}
-            </button>
-          )}
-        </>
-      )}
-
-      {/* Progress indicator */}
-      {progress && (
-        <div className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 mb-4 flex items-center gap-3">
-          <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-          <p className="text-gray-300 text-sm">{progress}</p>
-        </div>
-      )}
-
-      {error   && <p className="text-red-400 text-sm mb-4 bg-red-950/30 border border-red-800 rounded-lg px-4 py-3">{error}</p>}
-      {success && <p className="text-green-400 text-sm mb-4 bg-green-950/30 border border-green-800 rounded-lg px-4 py-3">{success}</p>}
-
-      {/* Roster preview */}
-      {importMode === 'roster' && rosterRows.length > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mb-4">
-          <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-100">{rosterRows.length} members extracted</p>
-            <p className="text-xs text-gray-500">Click a row to skip it</p>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-gray-500 text-xs uppercase tracking-wide border-b border-gray-800">
-                <th className="text-left px-4 py-2 font-medium">Name</th>
-                <th className="text-left px-4 py-2 font-medium">Rank</th>
-                <th className="text-right px-4 py-2 font-medium">Power</th>
-                <th className="text-center px-4 py-2 font-medium">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rosterRows.map((row, i) => (
-                <tr
-                  key={i}
-                  onClick={() => toggleRosterAction(i)}
-                  className={`border-b border-gray-800 last:border-0 cursor-pointer transition-colors ${
-                    row.action === 'skip' ? 'opacity-40' : 'hover:bg-gray-800/50'
-                  }`}
-                >
-                  <td className="px-4 py-2.5 font-medium text-gray-100">{row.name}</td>
-                  <td className="px-4 py-2.5 text-gray-400">R{row.rank}</td>
-                  <td className="px-4 py-2.5 text-right font-mono text-yellow-400">{formatPower(row.power)}</td>
-                  <td className="px-4 py-2.5 text-center">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                      row.action === 'add'    ? 'bg-green-900/50 text-green-400' :
-                      row.action === 'update' ? 'bg-blue-900/50 text-blue-400'  :
-                      'bg-gray-800 text-gray-600'
-                    }`}>
-                      {row.action}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="px-4 py-3 border-t border-gray-800 flex gap-3">
-            <button
-              onClick={handleSaveRoster}
-              disabled={saving}
-              className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-gray-950 font-bold px-5 py-2 rounded-lg text-sm transition-colors"
-            >
-              {saving ? 'Saving…' : `Save ${rosterRows.filter(r => r.action !== 'skip').length} Members`}
-            </button>
-            <button onClick={reset} className="text-gray-400 hover:text-gray-200 px-4 py-2 rounded-lg text-sm border border-gray-700 transition-colors">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Duel preview */}
-      {importMode === 'duel' && duelRows.length > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mb-4">
-          <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-100">
-              {duelRows.length} scores extracted — Day {selectedDay}: {DUEL_DAYS[selectedDay].name}
-            </p>
-            <p className="text-xs text-gray-500">Unmatched = not in roster</p>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-gray-500 text-xs uppercase tracking-wide border-b border-gray-800">
-                <th className="text-left px-4 py-2 font-medium">Name</th>
-                <th className="text-right px-4 py-2 font-medium">Score</th>
-                <th className="text-center px-4 py-2 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {duelRows.map((row, i) => (
-                <tr key={i} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/30">
-                  <td className="px-4 py-2.5 font-medium text-gray-100">{row.name}</td>
-                  <td className="px-4 py-2.5 text-right font-mono text-yellow-400">{formatPower(row.score)}</td>
-                  <td className="px-4 py-2.5 text-center">
-                    {row.matched || row.memberId
-                      ? <span className="text-xs font-semibold px-2 py-0.5 rounded bg-green-900/50 text-green-400">matched</span>
-                      : <span className="text-xs font-semibold px-2 py-0.5 rounded bg-red-900/50 text-red-400">no match</span>
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="px-4 py-3 border-t border-gray-800 flex gap-3 flex-wrap">
-            <button
-              onClick={handleSaveDuel}
-              disabled={saving}
-              className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-gray-950 font-bold px-5 py-2 rounded-lg text-sm transition-colors"
-            >
-              {saving ? 'Saving…' : `Save ${duelRows.filter(r => r.matched || r.memberId).length} Scores`}
-            </button>
-            <button onClick={reset} className="text-gray-400 hover:text-gray-200 px-4 py-2 rounded-lg text-sm border border-gray-700 transition-colors">
-              Cancel
-            </button>
-          </div>
-          {duelRows.some(r => !r.matched && !r.memberId) && (
-            <p className="px-4 pb-3 text-xs text-orange-400">
-              ⚠️ Some names didn't match your roster. Add them to the roster first, then re-import.
-            </p>
-          )}
+            )
+          })}
         </div>
       )}
     </div>
+  )
+}
+
+export default function TrainPage() {
+  const supabase = createClient()
+
+  const [logs, setLogs]         = useState<TrainLog[]>([])
+  const [members, setMembers]   = useState<Member[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm]         = useState(EMPTY_FORM)
+  const [editId, setEditId]     = useState<string | null>(null)
+  const [saving, setSaving]     = useState(false)
+  const [error, setError]       = useState<string | null>(null)
+  const [search, setSearch]     = useState('')
+
+  async function fetchLogs() {
+    const { data, error } = await supabase
+      .from('train_log')
+      .select('*')
+      .order('log_date', { ascending: false })
+      .limit(120)
+    if (error) { setError(error.message); return }
+    setLogs(data || [])
+  }
+
+  async function fetchMembers() {
+    const { data } = await supabase
+      .from('members')
+      .select('*')
+      .eq('active', true)
+      .order('rank', { ascending: false })
+      .order('name')
+    setMembers(data || [])
+  }
+
+  useEffect(() => {
+    Promise.all([fetchLogs(), fetchMembers()]).finally(() => setLoading(false))
+  }, [])
+
+  function openAdd() {
+    setForm({ ...EMPTY_FORM, log_date: todayStr() })
+    setEditId(null)
+    setShowForm(true)
+    setError(null)
+  }
+
+  function openEdit(log: TrainLog) {
+    setForm({
+      log_date:       log.log_date,
+      conductor_id:   log.conductor_id || '',
+      conductor_name: log.conductor_name,
+      vip_id:         log.vip_id || '',
+      vip_name:       log.vip_name || '',
+      notes:          log.notes || '',
+    })
+    setEditId(log.id)
+    setShowForm(true)
+    setError(null)
+  }
+
+  async function handleSave() {
+    if (!form.conductor_name.trim()) { setError('Conductor name is required'); return }
+    setSaving(true)
+    setError(null)
+
+    const payload = {
+      log_date:       form.log_date,
+      conductor_id:   form.conductor_id || null,
+      conductor_name: form.conductor_name.trim(),
+      vip_id:         form.vip_id || null,
+      vip_name:       form.vip_name.trim() || null,
+      notes:          form.notes.trim() || null,
+    }
+
+    if (editId) {
+      const { error } = await supabase.from('train_log').update(payload).eq('id', editId)
+      if (error) { setError(error.message); setSaving(false); return }
+    } else {
+      const { error } = await supabase
+        .from('train_log')
+        .upsert(payload, { onConflict: 'log_date' })
+      if (error) { setError(error.message); setSaving(false); return }
+    }
+
+    await fetchLogs()
+    setShowForm(false)
+    setForm(EMPTY_FORM)
+    setEditId(null)
+    setSaving(false)
+  }
+
+  async function handleDelete(id: string, date: string) {
+    if (!confirm(`Delete log entry for ${formatDate(date)}?`)) return
+    const { error } = await supabase.from('train_log').delete().eq('id', id)
+    if (error) { setError(error.message); return }
+    setLogs(prev => prev.filter(l => l.id !== id))
+  }
+
+  // Build a map of name -> dates active in last 14 days (as conductor OR vip)
+  const twoWeeksAgo = new Date()
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14)
+
+  const recentLogs = logs.filter(
+    log => new Date(log.log_date + 'T00:00:00') >= twoWeeksAgo
+  )
+
+  function getRecentDatesFor(name: string, role: 'conductor' | 'vip' | 'both'): string[] {
+    return recentLogs
+      .filter(l => {
+        if (role === 'conductor') return l.conductor_name.toLowerCase() === name.toLowerCase()
+        if (role === 'vip')       return l.vip_name?.toLowerCase() === name.toLowerCase()
+        return l.conductor_name.toLowerCase() === name.toLowerCase() ||
+               l.vip_name?.toLowerCase() === name.toLowerCase()
+      })
+      .map(l => l.log_date)
+      .filter((v, i, a) => a.indexOf(v) === i) // dedupe
+  }
+
+  // What to show as warning under conductor/vip inputs in the form
+  const conductorRecentDates = form.conductor_name
+    ? getRecentDatesFor(form.conductor_name, 'both')
+    : []
+  const vipRecentDates = form.vip_name
+    ? getRecentDatesFor(form.vip_name, 'both')
+    : []
+
+  // Filter log table by search
+  const filtered = logs.filter(l =>
+    l.conductor_name.toLowerCase().includes(search.toLowerCase()) ||
+    (l.vip_name || '').toLowerCase().includes(search.toLowerCase()) ||
+    l.log_date.includes(search)
+  )
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-100">Train Conductor Log</h1>
+          <p className="text-gray-400 text-sm mt-0.5">Last {logs.length} days recorded</p>
+        </div>
+        <button
+          onClick={openAdd}
+          className="bg-yellow-400 hover:bg-yellow-300 text-gray-950 font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
+        >
+          + Log Today
+        </button>
+      </div>
+
+      {/* Add / Edit Form */}
+      {showForm && (
+        <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 mb-6">
+          <h2 className="text-base font-semibold mb-4 text-gray-100">
+            {editId ? 'Edit Entry' : 'Log Train Entry'}
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Date</label>
+              <input
+                type="date"
+                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400"
+                value={form.log_date}
+                onChange={e => setForm(f => ({ ...f, log_date: e.target.value }))}
+              />
+            </div>
+            <div className="hidden sm:block" />
+
+            <MemberAutocomplete
+              label="Conductor"
+              required
+              selectedId={form.conductor_id}
+              selectedName={form.conductor_name}
+              members={members}
+              recentDates={conductorRecentDates}
+              onSelect={(id, name) => setForm(f => ({ ...f, conductor_id: id, conductor_name: name }))}
+              onManualChange={name => setForm(f => ({ ...f, conductor_name: name, conductor_id: '' }))}
+            />
+
+            <MemberAutocomplete
+              label="VIP / Special Guest"
+              selectedId={form.vip_id}
+              selectedName={form.vip_name}
+              members={members}
+              recentDates={vipRecentDates}
+              onSelect={(id, name) => setForm(f => ({ ...f, vip_id: id, vip_name: name }))}
+              onManualChange={name => setForm(f => ({ ...f, vip_name: name, vip_id: '' }))}
+            />
+
+            <div className="sm:col-span-2">
+              <label className="text-xs text-gray-400 mb-1 block">Notes (optional)</label>
+              <input
+                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400"
+                placeholder="Any notes about this run"
+                value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
+
+          <div className="flex gap-3 mt-4">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-gray-950 font-semibold px-5 py-2 rounded-lg text-sm transition-colors"
+            >
+              {saving ? 'Saving…' : editId ? 'Save Changes' : 'Save Entry'}
+            </button>
+            <button
+              onClick={() => { setShowForm(false); setError(null) }}
+              className="text-gray-400 hover:text-gray-200 px-4 py-2 rounded-lg text-sm border border-gray-700 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="relative mb-4">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">🔍</span>
+        <input
+          className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-yellow-400"
+          placeholder="Search by name or date…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* Log table */}
+      {loading ? (
+        <div className="text-gray-500 text-sm py-12 text-center">Loading log…</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-gray-500 text-sm py-12 text-center">
+          {search ? `No entries matching "${search}"` : 'No entries yet — log today\'s conductor above.'}
+        </div>
+      ) : (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
+            <thead>
+              <tr className="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
+                <th className="text-left px-4 py-3 font-medium">Date</th>
+                <th className="text-left px-4 py-3 font-medium">Conductor</th>
+                <th className="text-left px-4 py-3 font-medium">VIP</th>
+                <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Notes</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(log => {
+                const isRecent       = new Date(log.log_date + 'T00:00:00') >= twoWeeksAgo
+                const conductorPrior = getRecentDatesFor(log.conductor_name, 'both')
+                  .filter(d => d !== log.log_date)
+                const vipPrior       = log.vip_name
+                  ? getRecentDatesFor(log.vip_name, 'both').filter(d => d !== log.log_date)
+                  : []
+
+                return (
+                  <tr key={log.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50 transition-colors">
+                    <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
+                      {formatDate(log.log_date)}
+                      {isRecent && (
+                        <span className="ml-2 bg-yellow-900/50 text-yellow-400 text-xs px-1.5 py-0.5 rounded">recent</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-medium text-gray-100">{log.conductor_name}</span>
+                        {conductorPrior.length > 0 && (
+                          <span className="text-orange-400 text-xs">
+                            ⚠️ also active: {conductorPrior.map(shortDate).join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-gray-300">{log.vip_name || <span className="text-gray-600">—</span>}</span>
+                        {vipPrior.length > 0 && (
+                          <span className="text-orange-400 text-xs">
+                            ⚠️ also active: {vipPrior.map(shortDate).join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{log.notes || '—'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 justify-end">
+                        <button
+                          onClick={() => openEdit(log)}
+                          className="text-gray-400 hover:text-yellow-400 text-xs px-2 py-1 rounded border border-gray-700 hover:border-yellow-400 transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(log.id, log.log_date)}
+                          className="text-gray-400 hover:text-red-400 text-xs px-2 py-1 rounded border border-gray-700 hover:border-red-400 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
