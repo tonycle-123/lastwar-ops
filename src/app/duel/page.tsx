@@ -71,7 +71,7 @@ export default function DuelPage() {
   async function fetchMembers() {
     const { data } = await supabase
       .from('members')
-      .select('id, name, rank, power, active')
+      .select('*')
       .eq('active', true)
     return data || []
   }
