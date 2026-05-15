@@ -14,15 +14,13 @@ function formatPower(p: number) {
 
 export default function RosterPage() {
   const supabase = createClient()
-  const [members, setMembers]   = useState<Member[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [form, setForm]         = useState(EMPTY_FORM)
-  const [editId, setEditId]     = useState<string | null>(null)
-  const [showForm, setShowForm] = useState(false)
-  const [saving, setSaving]     = useState(false)
-  const [error, setError]       = useState<string | null>(null)
-  const [search, setSearch]     = useState('')
-  const [dupWarning, setDupWarning] = useState<string | null>(null)
+  const [members, setMembers]     = useState<Member[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [form, setForm]           = useState(EMPTY_FORM)
+  const [editId, setEditId]       = useState<string | null>(null)
+  const [showForm, setShowForm]   = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState<string | null>(null)
 
   async function fetchMembers() {
     const { data, error } = await supabase
@@ -44,7 +42,6 @@ export default function RosterPage() {
     setEditId(null)
     setShowForm(true)
     setError(null)
-    setDupWarning(null)
   }
 
   function openEdit(m: Member) {
@@ -52,36 +49,10 @@ export default function RosterPage() {
     setEditId(m.id)
     setShowForm(true)
     setError(null)
-    setDupWarning(null)
-  }
-
-  // Check for duplicate name as user types
-  function handleNameChange(value: string) {
-    setForm(f => ({ ...f, name: value }))
-    if (!value.trim()) { setDupWarning(null); return }
-
-    const duplicate = members.find(
-      m => m.name.toLowerCase() === value.trim().toLowerCase() && m.id !== editId
-    )
-    if (duplicate) {
-      setDupWarning(`⚠️ "${duplicate.name}" is already in the roster (R${duplicate.rank} · ${formatPower(duplicate.power)})`)
-    } else {
-      setDupWarning(null)
-    }
   }
 
   async function handleSave() {
     if (!form.name.trim()) { setError('Name is required'); return }
-
-    // Block save if duplicate exists
-    const duplicate = members.find(
-      m => m.name.toLowerCase() === form.name.trim().toLowerCase() && m.id !== editId
-    )
-    if (duplicate) {
-      setError(`"${duplicate.name}" already exists in the roster. Please use a unique name.`)
-      return
-    }
-
     setSaving(true)
     setError(null)
 
@@ -104,7 +75,6 @@ export default function RosterPage() {
     setShowForm(false)
     setForm(EMPTY_FORM)
     setEditId(null)
-    setDupWarning(null)
     setSaving(false)
   }
 
@@ -123,23 +93,13 @@ export default function RosterPage() {
     1: 'bg-gray-700 text-gray-300',
   }
 
-  // Filter by search
-  const filtered = members.filter(m =>
-    m.name.toLowerCase().includes(search.toLowerCase()) ||
-    RANK_LABELS[m.rank]?.toLowerCase().includes(search.toLowerCase())
-  )
-
   return (
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-100">Member Roster</h1>
-          <p className="text-gray-400 text-sm mt-0.5">
-            {filtered.length !== members.length
-              ? `${filtered.length} of ${members.length} members`
-              : `${members.length} active members`}
-          </p>
+          <p className="text-gray-400 text-sm mt-0.5">{members.length} active members</p>
         </div>
         <button
           onClick={openAdd}
@@ -147,25 +107,6 @@ export default function RosterPage() {
         >
           + Add Member
         </button>
-      </div>
-
-      {/* Search */}
-      <div className="relative mb-5">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">🔍</span>
-        <input
-          className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-yellow-400"
-          placeholder="Search by name or rank…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        {search && (
-          <button
-            onClick={() => setSearch('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs"
-          >
-            ✕
-          </button>
-        )}
       </div>
 
       {/* Add / Edit Form */}
@@ -178,16 +119,11 @@ export default function RosterPage() {
             <div className="sm:col-span-2">
               <label className="text-xs text-gray-400 mb-1 block">Name *</label>
               <input
-                className={`w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none ${
-                  dupWarning ? 'border-orange-500 focus:border-orange-400' : 'border-gray-600 focus:border-yellow-400'
-                }`}
+                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400"
                 placeholder="Member name"
                 value={form.name}
-                onChange={e => handleNameChange(e.target.value)}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               />
-              {dupWarning && (
-                <p className="text-orange-400 text-xs mt-1">{dupWarning}</p>
-              )}
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">Rank</label>
@@ -224,13 +160,13 @@ export default function RosterPage() {
           <div className="flex gap-3 mt-4">
             <button
               onClick={handleSave}
-              disabled={saving || !!dupWarning}
-              className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed text-gray-950 font-semibold px-5 py-2 rounded-lg text-sm transition-colors"
+              disabled={saving}
+              className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-gray-950 font-semibold px-5 py-2 rounded-lg text-sm transition-colors"
             >
               {saving ? 'Saving…' : editId ? 'Save Changes' : 'Add Member'}
             </button>
             <button
-              onClick={() => { setShowForm(false); setError(null); setDupWarning(null) }}
+              onClick={() => { setShowForm(false); setError(null) }}
               className="text-gray-400 hover:text-gray-200 px-4 py-2 rounded-lg text-sm transition-colors border border-gray-700"
             >
               Cancel
@@ -242,10 +178,8 @@ export default function RosterPage() {
       {/* Table */}
       {loading ? (
         <div className="text-gray-500 text-sm py-12 text-center">Loading roster…</div>
-      ) : filtered.length === 0 ? (
-        <div className="text-gray-500 text-sm py-12 text-center">
-          {search ? `No members found matching "${search}"` : 'No members yet — add your first one above.'}
-        </div>
+      ) : members.length === 0 ? (
+        <div className="text-gray-500 text-sm py-12 text-center">No members yet — add your first one above.</div>
       ) : (
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
@@ -260,7 +194,7 @@ export default function RosterPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((m, i) => (
+              {members.map((m, i) => (
                 <tr key={m.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50 transition-colors">
                   <td className="px-4 py-3 text-gray-500">{i + 1}</td>
                   <td className="px-4 py-3 font-medium text-gray-100">{m.name}</td>

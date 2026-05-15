@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Member, DuelEvent, DuelScore, DUEL_DAYS } from '@/lib/types'
 
+// Get the Monday of any given date
 function getMondayOf(date: Date): string {
   const d = new Date(date)
   const day = d.getDay()
@@ -24,7 +25,7 @@ function formatDateLabel(dateStr: string) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-type ScoreMap = Record<string, Record<number, number>>
+type ScoreMap = Record<string, Record<number, number>> // memberId -> day -> score
 
 export default function DuelPage() {
   const supabase = createClient()
@@ -38,8 +39,8 @@ export default function DuelPage() {
   const [editCell, setEditCell]      = useState<{ memberId: string; day: number } | null>(null)
   const [editValue, setEditValue]    = useState('')
   const [error, setError]            = useState<string | null>(null)
-  const [search, setSearch]          = useState('')
 
+  // Ensure this week's event exists, return it
   async function ensureCurrentEvent(): Promise<DuelEvent> {
     const monday = getMondayOf(new Date())
     const { data: existing } = await supabase
@@ -161,7 +162,7 @@ export default function DuelPage() {
     if (e.key === 'Escape') { setEditCell(null); setEditValue('') }
   }
 
-  // Calculate totals, sort by total desc, then filter by search
+  // Calculate totals and sort by total desc
   const ranked = members
     .map(m => {
       const dayScores = scores[m.id] || {}
@@ -169,10 +170,6 @@ export default function DuelPage() {
       return { ...m, dayScores, total }
     })
     .sort((a, b) => b.total - a.total)
-
-  const filtered = ranked.filter(m =>
-    m.name.toLowerCase().includes(search.toLowerCase())
-  )
 
   const isCurrentWeek = selectedEvent?.week_start === getMondayOf(new Date())
 
@@ -208,32 +205,13 @@ export default function DuelPage() {
       ) : (
         <>
           {/* Day theme legend */}
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-5">
             {Object.entries(DUEL_DAYS).map(([day, theme]) => (
               <div key={day} className="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-center">
                 <p className="text-xs text-gray-500 font-medium">Day {day}</p>
                 <p className="text-xs text-gray-300 mt-0.5">{theme.short}</p>
               </div>
             ))}
-          </div>
-
-          {/* Search */}
-          <div className="relative mb-4">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">🔍</span>
-            <input
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-yellow-400"
-              placeholder="Search member name…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs"
-              >
-                ✕
-              </button>
-            )}
           </div>
 
           {/* Score table */}
@@ -253,61 +231,53 @@ export default function DuelPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-gray-500 text-sm">
-                      {search ? `No members found matching "${search}"` : 'No members in roster yet.'}
+                {ranked.map((m, i) => (
+                  <tr key={m.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/30 transition-colors">
+                    <td className="px-4 py-3 text-gray-500 font-mono text-xs">{i + 1}</td>
+                    <td className="px-4 py-3 font-medium text-gray-100">{m.name}</td>
+                    {[1,2,3,4,5,6].map(day => {
+                      const isEditing = editCell?.memberId === m.id && editCell?.day === day
+                      const isSaving  = saving === `${m.id}-${day}`
+                      const val       = m.dayScores[day] ?? 0
+
+                      return (
+                        <td key={day} className="px-3 py-3 text-right">
+                          {isEditing ? (
+                            <input
+                              autoFocus
+                              className="w-24 bg-gray-700 border border-yellow-400 rounded px-2 py-1 text-xs text-right text-gray-100 focus:outline-none"
+                              value={editValue}
+                              onChange={e => setEditValue(e.target.value)}
+                              onBlur={commitEdit}
+                              onKeyDown={handleKeyDown}
+                              placeholder="0"
+                            />
+                          ) : (
+                            <button
+                              onClick={() => startEdit(m.id, day)}
+                              className={`font-mono text-xs px-2 py-1 rounded transition-colors w-24 text-right ${
+                                val > 0
+                                  ? 'text-gray-200 hover:bg-gray-700'
+                                  : 'text-gray-600 hover:bg-gray-700 hover:text-gray-400'
+                              } ${isSaving ? 'opacity-50' : ''}`}
+                            >
+                              {val > 0 ? formatScore(val) : '—'}
+                            </button>
+                          )}
+                        </td>
+                      )
+                    })}
+                    <td className="px-4 py-3 text-right font-mono font-bold text-yellow-400">
+                      {m.total > 0 ? formatScore(m.total) : '—'}
                     </td>
                   </tr>
-                ) : (
-                  filtered.map((m, i) => (
-                    <tr key={m.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/30 transition-colors">
-                      <td className="px-4 py-3 text-gray-500 font-mono text-xs">{i + 1}</td>
-                      <td className="px-4 py-3 font-medium text-gray-100">{m.name}</td>
-                      {[1,2,3,4,5,6].map(day => {
-                        const isEditing = editCell?.memberId === m.id && editCell?.day === day
-                        const isSaving  = saving === `${m.id}-${day}`
-                        const val       = m.dayScores[day] ?? 0
-
-                        return (
-                          <td key={day} className="px-3 py-3 text-right">
-                            {isEditing ? (
-                              <input
-                                autoFocus
-                                className="w-24 bg-gray-700 border border-yellow-400 rounded px-2 py-1 text-xs text-right text-gray-100 focus:outline-none"
-                                value={editValue}
-                                onChange={e => setEditValue(e.target.value)}
-                                onBlur={commitEdit}
-                                onKeyDown={handleKeyDown}
-                                placeholder="0"
-                              />
-                            ) : (
-                              <button
-                                onClick={() => startEdit(m.id, day)}
-                                className={`font-mono text-xs px-2 py-1 rounded transition-colors w-24 text-right ${
-                                  val > 0
-                                    ? 'text-gray-200 hover:bg-gray-700'
-                                    : 'text-gray-600 hover:bg-gray-700 hover:text-gray-400'
-                                } ${isSaving ? 'opacity-50' : ''}`}
-                              >
-                                {val > 0 ? formatScore(val) : '—'}
-                              </button>
-                            )}
-                          </td>
-                        )
-                      })}
-                      <td className="px-4 py-3 text-right font-mono font-bold text-yellow-400">
-                        {m.total > 0 ? formatScore(m.total) : '—'}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
 
           <p className="text-gray-600 text-xs mt-3 text-center">
-            Click any score cell to edit · Enter to save · Escape to cancel
+            Click any score cell to edit it. Press Enter to save, Escape to cancel.
           </p>
         </>
       )}

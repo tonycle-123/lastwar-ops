@@ -8,6 +8,7 @@ const links = [
   { href: '/',          label: 'Roster'    },
   { href: '/duel',      label: 'Alliance Duel' },
   { href: '/train',     label: 'Train Log' },
+  { href: '/import', label: 'Import' },
 ]
 
 export default function Nav() {
