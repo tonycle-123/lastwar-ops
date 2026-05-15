@@ -12,86 +12,58 @@ function formatPower(p: number) {
   return p.toLocaleString()
 }
 
+function totalPower(members: Member[]) {
+  const t = members.reduce((a, m) => a + m.power, 0)
+  if (t >= 1_000_000_000) return (t / 1_000_000_000).toFixed(1) + 'B'
+  if (t >= 1_000_000)     return (t / 1_000_000).toFixed(0) + 'M'
+  return t.toLocaleString()
+}
+
 export default function RosterPage() {
   const supabase = createClient()
-  const [members, setMembers]   = useState<Member[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [form, setForm]         = useState(EMPTY_FORM)
-  const [editId, setEditId]     = useState<string | null>(null)
-  const [showForm, setShowForm] = useState(false)
-  const [saving, setSaving]     = useState(false)
-  const [error, setError]       = useState<string | null>(null)
-  const [search, setSearch]     = useState('')
+  const [members, setMembers]     = useState<Member[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [form, setForm]           = useState(EMPTY_FORM)
+  const [editId, setEditId]       = useState<string | null>(null)
+  const [showForm, setShowForm]   = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState<string | null>(null)
+  const [search, setSearch]       = useState('')
   const [dupWarning, setDupWarning] = useState<string | null>(null)
 
   async function fetchMembers() {
     const { data, error } = await supabase
-      .from('members')
-      .select('*')
-      .eq('active', true)
+      .from('members').select('*').eq('active', true)
       .order('rank', { ascending: false })
       .order('power', { ascending: false })
     if (error) { setError(error.message); return }
     setMembers(data || [])
   }
 
-  useEffect(() => {
-    fetchMembers().finally(() => setLoading(false))
-  }, [])
+  useEffect(() => { fetchMembers().finally(() => setLoading(false)) }, [])
 
   function openAdd() {
-    setForm(EMPTY_FORM)
-    setEditId(null)
-    setShowForm(true)
-    setError(null)
-    setDupWarning(null)
+    setForm(EMPTY_FORM); setEditId(null); setShowForm(true); setError(null); setDupWarning(null)
   }
 
   function openEdit(m: Member) {
     setForm({ name: m.name, rank: m.rank, power: String(m.power), notes: m.notes || '' })
-    setEditId(m.id)
-    setShowForm(true)
-    setError(null)
-    setDupWarning(null)
+    setEditId(m.id); setShowForm(true); setError(null); setDupWarning(null)
   }
 
-  // Check for duplicate name as user types
   function handleNameChange(value: string) {
     setForm(f => ({ ...f, name: value }))
     if (!value.trim()) { setDupWarning(null); return }
-
-    const duplicate = members.find(
-      m => m.name.toLowerCase() === value.trim().toLowerCase() && m.id !== editId
-    )
-    if (duplicate) {
-      setDupWarning(`⚠️ "${duplicate.name}" is already in the roster (R${duplicate.rank} · ${formatPower(duplicate.power)})`)
-    } else {
-      setDupWarning(null)
-    }
+    const dup = members.find(m => m.name.toLowerCase() === value.trim().toLowerCase() && m.id !== editId)
+    setDupWarning(dup ? `⚠️ "${dup.name}" already exists (R${dup.rank} · ${formatPower(dup.power)})` : null)
   }
 
   async function handleSave() {
     if (!form.name.trim()) { setError('Name is required'); return }
-
-    // Block save if duplicate exists
-    const duplicate = members.find(
-      m => m.name.toLowerCase() === form.name.trim().toLowerCase() && m.id !== editId
-    )
-    if (duplicate) {
-      setError(`"${duplicate.name}" already exists in the roster. Please use a unique name.`)
-      return
-    }
-
-    setSaving(true)
-    setError(null)
-
-    const payload = {
-      name:  form.name.trim(),
-      rank:  Number(form.rank),
-      power: form.power ? Number(form.power.toString().replace(/,/g, '')) : 0,
-      notes: form.notes || null,
-    }
-
+    const dup = members.find(m => m.name.toLowerCase() === form.name.trim().toLowerCase() && m.id !== editId)
+    if (dup) { setError(`"${dup.name}" already exists in the roster.`); return }
+    setSaving(true); setError(null)
+    const payload = { name: form.name.trim(), rank: Number(form.rank), power: form.power ? Number(form.power.toString().replace(/,/g, '')) : 0, notes: form.notes || null }
     if (editId) {
       const { error } = await supabase.from('members').update(payload).eq('id', editId)
       if (error) { setError(error.message); setSaving(false); return }
@@ -99,13 +71,8 @@ export default function RosterPage() {
       const { error } = await supabase.from('members').insert(payload)
       if (error) { setError(error.message); setSaving(false); return }
     }
-
     await fetchMembers()
-    setShowForm(false)
-    setForm(EMPTY_FORM)
-    setEditId(null)
-    setDupWarning(null)
-    setSaving(false)
+    setShowForm(false); setForm(EMPTY_FORM); setEditId(null); setDupWarning(null); setSaving(false)
   }
 
   async function handleDelete(id: string, name: string) {
@@ -115,179 +82,152 @@ export default function RosterPage() {
     setMembers(prev => prev.filter(m => m.id !== id))
   }
 
-  const rankColors: Record<number, string> = {
-    5: 'bg-yellow-400 text-gray-950',
-    4: 'bg-orange-400 text-gray-950',
-    3: 'bg-blue-500 text-white',
-    2: 'bg-gray-500 text-white',
-    1: 'bg-gray-700 text-gray-300',
-  }
-
-  // Filter by search
   const filtered = members.filter(m =>
     m.name.toLowerCase().includes(search.toLowerCase()) ||
     RANK_LABELS[m.rank]?.toLowerCase().includes(search.toLowerCase())
   )
 
+  // Group by rank
+  const grouped = [5,4,3,2,1].map(rank => ({
+    rank,
+    members: filtered.filter(m => m.rank === rank)
+  })).filter(g => g.members.length > 0)
+
+  const rankLabels: Record<number, string> = { 5: 'R5 — Leader', 4: 'R4 — Officers', 3: 'R3 — Elite', 2: 'R2 — Members', 1: 'R1 — Recruits' }
+
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-100">Member Roster</h1>
-          <p className="text-gray-400 text-sm mt-0.5">
-            {filtered.length !== members.length
-              ? `${filtered.length} of ${members.length} members`
-              : `${members.length} active members`}
-          </p>
+      {/* Hero banner */}
+      <div style={{ background: 'linear-gradient(180deg, #1a1000 0%, #0d0d0f 100%)', border: '1px solid #2a1f0a', borderRadius: 12, padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 52, height: 52, background: 'linear-gradient(135deg, #1a1000, #2a1f0a)', border: '2px solid #b8860b', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>🛡️</div>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#ffd700', letterSpacing: '0.08em' }}>[ ISLE ]</div>
+            <div style={{ fontSize: 12, color: '#7a6030', marginTop: 3, display: 'flex', gap: 10 }}>
+              <span>Server 1109</span>
+              <span style={{ color: '#3a2a10' }}>·</span>
+              <span style={{ color: '#4a8a4a' }}>● Active</span>
+            </div>
+          </div>
         </div>
-        <button
-          onClick={openAdd}
-          className="bg-yellow-400 hover:bg-yellow-300 text-gray-950 font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
-        >
-          + Add Member
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div className="lw-stat">
+            <div className="lw-stat-val">{members.length}</div>
+            <div className="lw-stat-label">Members</div>
+          </div>
+          <div className="lw-stat">
+            <div className="lw-stat-val" style={{ color: '#e07030' }}>{totalPower(members)}</div>
+            <div className="lw-stat-label">Total Power</div>
+          </div>
+          <div className="lw-stat">
+            <div className="lw-stat-val" style={{ color: '#4a9a6a' }}>{members.filter(m => m.rank >= 4).length}</div>
+            <div className="lw-stat-label">Officers+</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div className="section-title">
+          <i className="ti ti-users" aria-hidden="true" />
+          Member Roster
+          {filtered.length !== members.length && <span style={{ color: '#4a3820', fontWeight: 400 }}>— {filtered.length} of {members.length}</span>}
+        </div>
+        <button className="btn-gold" onClick={openAdd}>
+          <i className="ti ti-plus" aria-hidden="true" />
+          Add Member
         </button>
       </div>
 
       {/* Search */}
-      <div className="relative mb-5">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">🔍</span>
-        <input
-          className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-yellow-400"
-          placeholder="Search by name or rank…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        {search && (
-          <button
-            onClick={() => setSearch('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs"
-          >
-            ✕
-          </button>
-        )}
+      <div className="lw-search" style={{ marginBottom: 14 }}>
+        <i className="ti ti-search" aria-hidden="true" style={{ color: '#4a3820', fontSize: 14 }} />
+        <input placeholder="Search by name or rank…" value={search} onChange={e => setSearch(e.target.value)} />
+        {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#4a3820', cursor: 'pointer', fontSize: 12 }}>✕</button>}
       </div>
 
-      {/* Add / Edit Form */}
+      {/* Add / Edit form */}
       {showForm && (
-        <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 mb-6">
-          <h2 className="text-base font-semibold mb-4 text-gray-100">
-            {editId ? 'Edit Member' : 'Add Member'}
-          </h2>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div className="sm:col-span-2">
-              <label className="text-xs text-gray-400 mb-1 block">Name *</label>
-              <input
-                className={`w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none ${
-                  dupWarning ? 'border-orange-500 focus:border-orange-400' : 'border-gray-600 focus:border-yellow-400'
-                }`}
-                placeholder="Member name"
-                value={form.name}
-                onChange={e => handleNameChange(e.target.value)}
-              />
-              {dupWarning && (
-                <p className="text-orange-400 text-xs mt-1">{dupWarning}</p>
-              )}
+        <div className="lw-form-panel" style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#c8a840', marginBottom: 14 }}>{editId ? 'Edit Member' : 'Add Member'}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+            <div style={{ gridColumn: 'span 2' }}>
+              <label className="lw-form-label">Name *</label>
+              <input className="lw-input" style={{ borderColor: dupWarning ? '#8a4020' : undefined }} placeholder="Member name" value={form.name} onChange={e => handleNameChange(e.target.value)} />
+              {dupWarning && <p style={{ color: '#c07040', fontSize: 11, marginTop: 4 }}>{dupWarning}</p>}
             </div>
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">Rank</label>
-              <select
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400"
-                value={form.rank}
-                onChange={e => setForm(f => ({ ...f, rank: Number(e.target.value) }))}
-              >
-                {[5,4,3,2,1].map(r => (
-                  <option key={r} value={r}>R{r}</option>
-                ))}
+              <label className="lw-form-label">Rank</label>
+              <select className="lw-select" value={form.rank} onChange={e => setForm(f => ({ ...f, rank: Number(e.target.value) }))}>
+                {[5,4,3,2,1].map(r => <option key={r} value={r}>R{r}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">Power</label>
-              <input
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400"
-                placeholder="e.g. 850000000"
-                value={form.power}
-                onChange={e => setForm(f => ({ ...f, power: e.target.value }))}
-              />
+              <label className="lw-form-label">Power</label>
+              <input className="lw-input" placeholder="e.g. 850000000" value={form.power} onChange={e => setForm(f => ({ ...f, power: e.target.value }))} />
             </div>
-            <div className="sm:col-span-4">
-              <label className="text-xs text-gray-400 mb-1 block">Notes (optional)</label>
-              <input
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400"
-                placeholder="Any notes about this member"
-                value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              />
+            <div style={{ gridColumn: 'span 2' }}>
+              <label className="lw-form-label">Notes (optional)</label>
+              <input className="lw-input" placeholder="Any notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
           </div>
-          {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
-          <div className="flex gap-3 mt-4">
-            <button
-              onClick={handleSave}
-              disabled={saving || !!dupWarning}
-              className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed text-gray-950 font-semibold px-5 py-2 rounded-lg text-sm transition-colors"
-            >
+          {error && <div className="lw-error" style={{ marginTop: 12 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <button className="btn-gold" onClick={handleSave} disabled={saving || !!dupWarning}>
               {saving ? 'Saving…' : editId ? 'Save Changes' : 'Add Member'}
             </button>
-            <button
-              onClick={() => { setShowForm(false); setError(null); setDupWarning(null) }}
-              className="text-gray-400 hover:text-gray-200 px-4 py-2 rounded-lg text-sm transition-colors border border-gray-700"
-            >
-              Cancel
-            </button>
+            <button className="btn-ghost" onClick={() => { setShowForm(false); setError(null); setDupWarning(null) }}>Cancel</button>
           </div>
         </div>
       )}
 
       {/* Table */}
       {loading ? (
-        <div className="text-gray-500 text-sm py-12 text-center">Loading roster…</div>
+        <div style={{ textAlign: 'center', color: '#4a3820', padding: '48px 0', fontSize: 13 }}>Loading roster…</div>
       ) : filtered.length === 0 ? (
-        <div className="text-gray-500 text-sm py-12 text-center">
-          {search ? `No members found matching "${search}"` : 'No members yet — add your first one above.'}
+        <div style={{ textAlign: 'center', color: '#4a3820', padding: '48px 0', fontSize: 13 }}>
+          {search ? `No members matching "${search}"` : 'No members yet — add your first one above.'}
         </div>
       ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="lw-card">
+          <table className="lw-table">
             <thead>
-              <tr className="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
-                <th className="text-left px-4 py-3 font-medium">#</th>
-                <th className="text-left px-4 py-3 font-medium">Name</th>
-                <th className="text-left px-4 py-3 font-medium">Rank</th>
-                <th className="text-right px-4 py-3 font-medium">Power</th>
-                <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Notes</th>
-                <th className="px-4 py-3"></th>
+              <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Rank</th>
+                <th style={{ textAlign: 'right' }}>Power</th>
+                <th style={{ display: 'none' }} className="sm-show">Notes</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((m, i) => (
-                <tr key={m.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50 transition-colors">
-                  <td className="px-4 py-3 text-gray-500">{i + 1}</td>
-                  <td className="px-4 py-3 font-medium text-gray-100">{m.name}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${rankColors[m.rank] || 'bg-gray-700 text-gray-300'}`}>
-                      {RANK_LABELS[m.rank]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-yellow-400">{formatPower(m.power)}</td>
-                  <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{m.notes || '—'}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2 justify-end">
-                      <button
-                        onClick={() => openEdit(m)}
-                        className="text-gray-400 hover:text-yellow-400 text-xs px-2 py-1 rounded border border-gray-700 hover:border-yellow-400 transition-colors"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(m.id, m.name)}
-                        className="text-gray-400 hover:text-red-400 text-xs px-2 py-1 rounded border border-gray-700 hover:border-red-400 transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+              {grouped.map(({ rank, members: group }) => (
+                <>
+                  <tr key={`div-${rank}`} className="rank-divider">
+                    <td colSpan={6}>
+                      <div className="rank-divider-label">{rankLabels[rank]} <span style={{ color: '#3a2a10' }}>({group.length})</span></div>
+                    </td>
+                  </tr>
+                  {group.map((m, i) => {
+                    const globalIdx = filtered.indexOf(m)
+                    return (
+                      <tr key={m.id}>
+                        <td style={{ color: '#3a2a10', fontSize: 11, width: 32 }}>{globalIdx + 1}</td>
+                        <td style={{ fontWeight: 500, color: '#e8d8a0' }}>{m.name}</td>
+                        <td><span className={`rank-badge rank-${m.rank}`}>R{m.rank}</span></td>
+                        <td style={{ textAlign: 'right' }} className="power-text">{formatPower(m.power)}</td>
+                        <td style={{ color: '#4a3820', fontSize: 12 }}>{m.notes || '—'}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                            <button className="btn-ghost" onClick={() => openEdit(m)}>Edit</button>
+                            <button className="btn-ghost danger" onClick={() => handleDelete(m.id, m.name)}>Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </>
               ))}
             </tbody>
           </table>

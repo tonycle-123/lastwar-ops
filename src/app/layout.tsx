@@ -2,21 +2,25 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import Nav from '@/components/Nav'
+import { ALLIANCE_TAG, SERVER_NUM } from '@/lib/types'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'LastWar Ops — ISLE 1109',
-  description: 'Alliance management for Server 1109 / ISLE',
+  title: `${ALLIANCE_TAG} Ops — Server ${SERVER_NUM}`,
+  description: `Alliance management for Server ${SERVER_NUM} / ${ALLIANCE_TAG}`,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-950 text-gray-100 min-h-screen`}>
+      <head>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
+      </head>
+      <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <Nav />
-        <main className="max-w-7xl mx-auto px-4 py-8">
+        <main className="lw-page">
           {children}
         </main>
       </body>
