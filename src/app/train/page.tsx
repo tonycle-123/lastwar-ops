@@ -22,17 +22,83 @@ const EMPTY_FORM = {
   notes: '',
 }
 
+// Filtered dropdown with search
+function MemberAutocomplete({
+  label,
+  required,
+  selectedId,
+  selectedName,
+  members,
+  onSelect,
+  onManualChange,
+}: {
+  label: string
+  required?: boolean
+  selectedId: string
+  selectedName: string
+  members: Member[]
+  onSelect: (id: string, name: string) => void
+  onManualChange: (name: string) => void
+}) {
+  const [query, setQuery]     = useState(selectedName)
+  const [open, setOpen]       = useState(false)
+
+  useEffect(() => { setQuery(selectedName) }, [selectedName])
+
+  const filtered = members.filter(m =>
+    m.name.toLowerCase().includes(query.toLowerCase())
+  )
+
+  return (
+    <div className="relative">
+      <label className="text-xs text-gray-400 mb-1 block">{label}{required && ' *'}</label>
+      <input
+        className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-yellow-400"
+        placeholder={`Search or type ${label.toLowerCase()}…`}
+        value={query}
+        onChange={e => {
+          setQuery(e.target.value)
+          onManualChange(e.target.value)
+          setOpen(true)
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-20 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+          {filtered.map(m => (
+            <button
+              key={m.id}
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700 transition-colors flex items-center gap-2"
+              onMouseDown={() => {
+                onSelect(m.id, m.name)
+                setQuery(m.name)
+                setOpen(false)
+              }}
+            >
+              <span className="text-xs bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded">R{m.rank}</span>
+              <span className="text-gray-100">{m.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function TrainPage() {
   const supabase = createClient()
 
-  const [logs, setLogs]         = useState<TrainLog[]>([])
-  const [members, setMembers]   = useState<Member[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm]         = useState(EMPTY_FORM)
-  const [editId, setEditId]     = useState<string | null>(null)
-  const [saving, setSaving]     = useState(false)
-  const [error, setError]       = useState<string | null>(null)
+  const [logs, setLogs]           = useState<TrainLog[]>([])
+  const [members, setMembers]     = useState<Member[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [showForm, setShowForm]   = useState(false)
+  const [form, setForm]           = useState(EMPTY_FORM)
+  const [editId, setEditId]       = useState<string | null>(null)
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState<string | null>(null)
+  const [alertOpen, setAlertOpen] = useState(false)
 
   async function fetchLogs() {
     const { data, error } = await supabase
@@ -79,15 +145,6 @@ export default function TrainPage() {
     setError(null)
   }
 
-  function handleMemberSelect(field: 'conductor' | 'vip', memberId: string) {
-    const member = members.find(m => m.id === memberId)
-    if (field === 'conductor') {
-      setForm(f => ({ ...f, conductor_id: memberId, conductor_name: member?.name || '' }))
-    } else {
-      setForm(f => ({ ...f, vip_id: memberId, vip_name: member?.name || '' }))
-    }
-  }
-
   async function handleSave() {
     if (!form.conductor_name.trim()) { setError('Conductor name is required'); return }
     setSaving(true)
@@ -126,7 +183,7 @@ export default function TrainPage() {
     setLogs(prev => prev.filter(l => l.id !== id))
   }
 
-  // Flag anyone who has been conductor in the last 14 days
+  // 14-day flagging for both conductors and VIPs
   const twoWeeksAgo = new Date()
   twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14)
 
@@ -134,15 +191,21 @@ export default function TrainPage() {
     log => new Date(log.log_date + 'T00:00:00') >= twoWeeksAgo
   )
 
-  const recentConductorNames = recentLogs.map(l => l.conductor_name)
-
-  const flagged = [...new Set(recentConductorNames)].map(name => ({
+  const recentConductors = [...new Set(recentLogs.map(l => l.conductor_name))].map(name => ({
     name,
-    count: recentConductorNames.filter(n => n === name).length,
-    dates: recentLogs
-      .filter(l => l.conductor_name === name)
-      .map(l => formatDate(l.log_date)),
+    role: 'Conductor' as const,
+    count: recentLogs.filter(l => l.conductor_name === name).length,
+    dates: recentLogs.filter(l => l.conductor_name === name).map(l => formatDate(l.log_date)),
   })).sort((a, b) => b.count - a.count)
+
+  const recentVIPs = [...new Set(recentLogs.filter(l => l.vip_name).map(l => l.vip_name!))].map(name => ({
+    name,
+    role: 'VIP' as const,
+    count: recentLogs.filter(l => l.vip_name === name).length,
+    dates: recentLogs.filter(l => l.vip_name === name).map(l => formatDate(l.log_date)),
+  })).sort((a, b) => b.count - a.count)
+
+  const flagged = [...recentConductors, ...recentVIPs]
 
   return (
     <div>
@@ -159,19 +222,56 @@ export default function TrainPage() {
         </button>
       </div>
 
-      {/* 14-day repeat warning */}
+      {/* Collapsible 14-day alert */}
       {flagged.length > 0 && (
-        <div className="bg-orange-950/40 border border-orange-800 rounded-xl p-4 mb-6">
-          <p className="text-orange-400 text-sm font-semibold mb-3">⚠️ Conductors active in the last 14 days</p>
-          <div className="flex flex-col gap-2">
-            {flagged.map(({ name, count, dates }) => (
-              <div key={name} className="bg-orange-900/40 rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
-                <span className="text-orange-200 text-sm font-semibold">{name}</span>
-                <span className="text-orange-400 text-xs">×{count}</span>
-                <span className="text-orange-600 text-xs">{dates.join(' · ')}</span>
-              </div>
-            ))}
-          </div>
+        <div className="bg-orange-950/40 border border-orange-800 rounded-xl mb-6 overflow-hidden">
+          <button
+            onClick={() => setAlertOpen(o => !o)}
+            className="w-full flex items-center justify-between px-4 py-3 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-orange-400 text-sm font-semibold">
+                ⚠️ Active in last 14 days
+              </span>
+              <span className="bg-orange-900/60 text-orange-300 text-xs px-2 py-0.5 rounded-full">
+                {recentConductors.length} conductors · {recentVIPs.length} VIPs
+              </span>
+            </div>
+            <span className="text-orange-500 text-xs">{alertOpen ? '▲ collapse' : '▼ expand'}</span>
+          </button>
+
+          {alertOpen && (
+            <div className="px-4 pb-4 border-t border-orange-800/50">
+              {recentConductors.length > 0 && (
+                <>
+                  <p className="text-orange-600 text-xs font-medium uppercase tracking-wide mt-3 mb-2">Conductors</p>
+                  <div className="flex flex-col gap-1.5">
+                    {recentConductors.map(({ name, count, dates }) => (
+                      <div key={name} className="bg-orange-900/30 rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
+                        <span className="text-orange-200 text-sm font-semibold">{name}</span>
+                        <span className="text-orange-400 text-xs">×{count}</span>
+                        <span className="text-orange-600 text-xs">{dates.join(' · ')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {recentVIPs.length > 0 && (
+                <>
+                  <p className="text-orange-600 text-xs font-medium uppercase tracking-wide mt-3 mb-2">VIPs</p>
+                  <div className="flex flex-col gap-1.5">
+                    {recentVIPs.map(({ name, count, dates }) => (
+                      <div key={name} className="bg-orange-900/30 rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
+                        <span className="text-orange-200 text-sm font-semibold">{name}</span>
+                        <span className="text-orange-400 text-xs">×{count}</span>
+                        <span className="text-orange-600 text-xs">{dates.join(' · ')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -192,44 +292,26 @@ export default function TrainPage() {
               />
             </div>
             <div className="hidden sm:block" />
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">Conductor *</label>
-              <select
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400 mb-2"
-                value={form.conductor_id}
-                onChange={e => handleMemberSelect('conductor', e.target.value)}
-              >
-                <option value="">— Pick from roster —</option>
-                {members.map(m => (
-                  <option key={m.id} value={m.id}>R{m.rank} · {m.name}</option>
-                ))}
-              </select>
-              <input
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400"
-                placeholder="Or type name manually"
-                value={form.conductor_name}
-                onChange={e => setForm(f => ({ ...f, conductor_name: e.target.value, conductor_id: '' }))}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">VIP / Special Guest</label>
-              <select
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400 mb-2"
-                value={form.vip_id}
-                onChange={e => handleMemberSelect('vip', e.target.value)}
-              >
-                <option value="">— Pick from roster —</option>
-                {members.map(m => (
-                  <option key={m.id} value={m.id}>R{m.rank} · {m.name}</option>
-                ))}
-              </select>
-              <input
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400"
-                placeholder="Or type name manually"
-                value={form.vip_name}
-                onChange={e => setForm(f => ({ ...f, vip_name: e.target.value, vip_id: '' }))}
-              />
-            </div>
+
+            <MemberAutocomplete
+              label="Conductor"
+              required
+              selectedId={form.conductor_id}
+              selectedName={form.conductor_name}
+              members={members}
+              onSelect={(id, name) => setForm(f => ({ ...f, conductor_id: id, conductor_name: name }))}
+              onManualChange={name => setForm(f => ({ ...f, conductor_name: name, conductor_id: '' }))}
+            />
+
+            <MemberAutocomplete
+              label="VIP / Special Guest"
+              selectedId={form.vip_id}
+              selectedName={form.vip_name}
+              members={members}
+              onSelect={(id, name) => setForm(f => ({ ...f, vip_id: id, vip_name: name }))}
+              onManualChange={name => setForm(f => ({ ...f, vip_name: name, vip_id: '' }))}
+            />
+
             <div className="sm:col-span-2">
               <label className="text-xs text-gray-400 mb-1 block">Notes (optional)</label>
               <input
