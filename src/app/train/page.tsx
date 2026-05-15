@@ -266,8 +266,8 @@ export default function TrainPage() {
       ) : logs.length === 0 ? (
         <div className="text-gray-500 text-sm py-12 text-center">No entries yet — log today's conductor above.</div>
       ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
                 <th className="text-left px-4 py-3 font-medium">Date</th>
