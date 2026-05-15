@@ -14,38 +14,27 @@ function shortDate(dateStr: string) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function todayStr() {
-  return new Date().toISOString().split('T')[0]
-}
+function todayStr() { return new Date().toISOString().split('T')[0] }
 
-const EMPTY_FORM = {
-  log_date: todayStr(),
-  conductor_id: '',
-  conductor_name: '',
-  vip_id: '',
-  vip_name: '',
-  notes: '',
-}
+const EMPTY_FORM = { log_date: todayStr(), conductor_id: '', conductor_name: '', vip_id: '', vip_name: '', notes: '' }
 
-// Clickable hazard flag that expands to show prior dates
 function NameCell({ name, priorDates }: { name: string; priorDates: string[] }) {
   const [open, setOpen] = useState(false)
   const hasFlag = priorDates.length > 0
-
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="font-medium text-gray-100">{name}</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontWeight: 500, color: '#e8d8a0' }}>{name}</span>
       {hasFlag && (
         <button
           onClick={() => setOpen(o => !o)}
-          className="text-orange-400 hover:text-orange-300 transition-colors text-sm leading-none"
-          title="Active in last 14 days — click to expand"
+          title="Active in last 14 days"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, lineHeight: 1 }}
         >
           ⚠️
         </button>
       )}
       {hasFlag && open && (
-        <span className="text-orange-400 text-xs whitespace-nowrap">
+        <span style={{ fontSize: 11, color: '#c07040', whiteSpace: 'nowrap' }}>
           {priorDates.map(shortDate).join(', ')}
         </span>
       )}
@@ -53,81 +42,47 @@ function NameCell({ name, priorDates }: { name: string; priorDates: string[] }) 
   )
 }
 
-// Autocomplete input that filters from roster
-function MemberAutocomplete({
-  label,
-  required,
-  selectedId,
-  selectedName,
-  members,
-  onSelect,
-  onManualChange,
-  recentDates,
-}: {
-  label: string
-  required?: boolean
-  selectedId: string
-  selectedName: string
-  members: Member[]
-  onSelect: (id: string, name: string) => void
-  onManualChange: (name: string) => void
-  recentDates?: string[] // dates this person was active in last 14 days
+function MemberAutocomplete({ label, required, selectedId, selectedName, members, onSelect, onManualChange, recentDates }: {
+  label: string; required?: boolean; selectedId: string; selectedName: string
+  members: Member[]; onSelect: (id: string, name: string) => void
+  onManualChange: (name: string) => void; recentDates?: string[]
 }) {
   const [query, setQuery] = useState(selectedName)
   const [open, setOpen]   = useState(false)
-
   useEffect(() => { setQuery(selectedName) }, [selectedName])
-
-  const filtered = members.filter(m =>
-    m.name.toLowerCase().includes(query.toLowerCase())
-  )
-
+  const filtered = members.filter(m => m.name.toLowerCase().includes(query.toLowerCase()))
   const hasWarning = recentDates && recentDates.length > 0
 
   return (
-    <div className="relative">
-      <label className="text-xs text-gray-400 mb-1 block">{label}{required && ' *'}</label>
+    <div style={{ position: 'relative' }}>
+      <label className="lw-form-label">{label}{required && ' *'}</label>
       <input
-        className={`w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none transition-colors ${
-          hasWarning ? 'border-orange-500 focus:border-orange-400' : 'border-gray-600 focus:border-yellow-400'
-        }`}
+        className="lw-input"
+        style={{ borderColor: hasWarning ? '#8a4020' : undefined }}
         placeholder={`Search or type ${label.toLowerCase()}…`}
         value={query}
-        onChange={e => {
-          setQuery(e.target.value)
-          onManualChange(e.target.value)
-          setOpen(true)
-        }}
+        onChange={e => { setQuery(e.target.value); onManualChange(e.target.value); setOpen(true) }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
       />
-      {/* Warning under input if recently active */}
       {hasWarning && (
-        <p className="text-orange-400 text-xs mt-1">
+        <p style={{ color: '#c07040', fontSize: 11, marginTop: 4 }}>
           ⚠️ Active in last 14 days: {recentDates!.map(shortDate).join(', ')}
         </p>
       )}
       {open && filtered.length > 0 && (
-        <div className="absolute z-20 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-          {filtered.map(m => {
-            const warn = recentDates && recentDates.length > 0 && m.name === selectedName
-            return (
-              <button
-                key={m.id}
-                type="button"
-                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700 transition-colors flex items-center gap-2"
-                onMouseDown={() => {
-                  onSelect(m.id, m.name)
-                  setQuery(m.name)
-                  setOpen(false)
-                }}
-              >
-                <span className="text-xs bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded">R{m.rank}</span>
-                <span className="text-gray-100">{m.name}</span>
-                {warn && <span className="text-orange-400 text-xs ml-auto">⚠️ recent</span>}
-              </button>
-            )
-          })}
+        <div className="lw-dropdown">
+          {filtered.map(m => (
+            <button
+              key={m.id}
+              type="button"
+              className="lw-dropdown-item"
+              onMouseDown={() => { onSelect(m.id, m.name); setQuery(m.name); setOpen(false) }}
+            >
+              <span className={`rank-badge rank-${m.rank}`} style={{ width: 22, height: 22, fontSize: 9 }}>R{m.rank}</span>
+              <span>{m.name}</span>
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -136,7 +91,6 @@ function MemberAutocomplete({
 
 export default function TrainPage() {
   const supabase = createClient()
-
   const [logs, setLogs]         = useState<TrainLog[]>([])
   const [members, setMembers]   = useState<Member[]>([])
   const [loading, setLoading]   = useState(true)
@@ -148,79 +102,37 @@ export default function TrainPage() {
   const [search, setSearch]     = useState('')
 
   async function fetchLogs() {
-    const { data, error } = await supabase
-      .from('train_log')
-      .select('*')
-      .order('log_date', { ascending: false })
-      .limit(180)
+    const { data, error } = await supabase.from('train_log').select('*').order('log_date', { ascending: false }).limit(180)
     if (error) { setError(error.message); return }
     setLogs(data || [])
   }
 
   async function fetchMembers() {
-    const { data } = await supabase
-      .from('members')
-      .select('*')
-      .eq('active', true)
-      .order('rank', { ascending: false })
-      .order('name')
+    const { data } = await supabase.from('members').select('*').eq('active', true).order('rank', { ascending: false }).order('name')
     setMembers(data || [])
   }
 
-  useEffect(() => {
-    Promise.all([fetchLogs(), fetchMembers()]).finally(() => setLoading(false))
-  }, [])
+  useEffect(() => { Promise.all([fetchLogs(), fetchMembers()]).finally(() => setLoading(false)) }, [])
 
-  function openAdd() {
-    setForm({ ...EMPTY_FORM, log_date: todayStr() })
-    setEditId(null)
-    setShowForm(true)
-    setError(null)
-  }
+  function openAdd() { setForm({ ...EMPTY_FORM, log_date: todayStr() }); setEditId(null); setShowForm(true); setError(null) }
 
   function openEdit(log: TrainLog) {
-    setForm({
-      log_date:       log.log_date,
-      conductor_id:   log.conductor_id || '',
-      conductor_name: log.conductor_name,
-      vip_id:         log.vip_id || '',
-      vip_name:       log.vip_name || '',
-      notes:          log.notes || '',
-    })
-    setEditId(log.id)
-    setShowForm(true)
-    setError(null)
+    setForm({ log_date: log.log_date, conductor_id: log.conductor_id || '', conductor_name: log.conductor_name, vip_id: log.vip_id || '', vip_name: log.vip_name || '', notes: log.notes || '' })
+    setEditId(log.id); setShowForm(true); setError(null)
   }
 
   async function handleSave() {
     if (!form.conductor_name.trim()) { setError('Conductor name is required'); return }
-    setSaving(true)
-    setError(null)
-
-    const payload = {
-      log_date:       form.log_date,
-      conductor_id:   form.conductor_id || null,
-      conductor_name: form.conductor_name.trim(),
-      vip_id:         form.vip_id || null,
-      vip_name:       form.vip_name.trim() || null,
-      notes:          form.notes.trim() || null,
-    }
-
+    setSaving(true); setError(null)
+    const payload = { log_date: form.log_date, conductor_id: form.conductor_id || null, conductor_name: form.conductor_name.trim(), vip_id: form.vip_id || null, vip_name: form.vip_name.trim() || null, notes: form.notes.trim() || null }
     if (editId) {
       const { error } = await supabase.from('train_log').update(payload).eq('id', editId)
       if (error) { setError(error.message); setSaving(false); return }
     } else {
-      const { error } = await supabase
-        .from('train_log')
-        .upsert(payload, { onConflict: 'log_date' })
+      const { error } = await supabase.from('train_log').upsert(payload, { onConflict: 'log_date' })
       if (error) { setError(error.message); setSaving(false); return }
     }
-
-    await fetchLogs()
-    setShowForm(false)
-    setForm(EMPTY_FORM)
-    setEditId(null)
-    setSaving(false)
+    await fetchLogs(); setShowForm(false); setForm(EMPTY_FORM); setEditId(null); setSaving(false)
   }
 
   async function handleDelete(id: string, date: string) {
@@ -230,35 +142,21 @@ export default function TrainPage() {
     setLogs(prev => prev.filter(l => l.id !== id))
   }
 
-  // Build a map of name -> dates active in last 14 days (as conductor OR vip)
   const twoWeeksAgo = new Date()
   twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14)
 
-  const recentLogs = logs.filter(
-    log => new Date(log.log_date + 'T00:00:00') >= twoWeeksAgo
-  )
+  const recentLogs = logs.filter(log => new Date(log.log_date + 'T00:00:00') >= twoWeeksAgo)
 
-  function getRecentDatesFor(name: string, role: 'conductor' | 'vip' | 'both'): string[] {
+  function getRecentDatesFor(name: string): string[] {
     return recentLogs
-      .filter(l => {
-        if (role === 'conductor') return l.conductor_name.toLowerCase() === name.toLowerCase()
-        if (role === 'vip')       return l.vip_name?.toLowerCase() === name.toLowerCase()
-        return l.conductor_name.toLowerCase() === name.toLowerCase() ||
-               l.vip_name?.toLowerCase() === name.toLowerCase()
-      })
+      .filter(l => l.conductor_name.toLowerCase() === name.toLowerCase() || l.vip_name?.toLowerCase() === name.toLowerCase())
       .map(l => l.log_date)
-      .filter((v, i, a) => a.indexOf(v) === i) // dedupe
+      .filter((v, i, a) => a.indexOf(v) === i)
   }
 
-  // What to show as warning under conductor/vip inputs in the form
-  const conductorRecentDates = form.conductor_name
-    ? getRecentDatesFor(form.conductor_name, 'both')
-    : []
-  const vipRecentDates = form.vip_name
-    ? getRecentDatesFor(form.vip_name, 'both')
-    : []
+  const conductorRecentDates = form.conductor_name ? getRecentDatesFor(form.conductor_name) : []
+  const vipRecentDates       = form.vip_name ? getRecentDatesFor(form.vip_name) : []
 
-  // Filter log table by search
   const filtered = logs.filter(l =>
     l.conductor_name.toLowerCase().includes(search.toLowerCase()) ||
     (l.vip_name || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -268,168 +166,106 @@ export default function TrainPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
-          <h1 className="text-2xl font-bold text-gray-100">Train Conductor Log</h1>
-          <p className="text-gray-400 text-sm mt-0.5">Last {logs.length} days recorded</p>
+          <div className="section-title" style={{ marginBottom: 4 }}>
+            <i className="ti ti-train" aria-hidden="true" />
+            Train Conductor Log
+          </div>
+          <div style={{ fontSize: 12, color: '#4a3820' }}>{logs.length} days recorded</div>
         </div>
-        <button
-          onClick={openAdd}
-          className="bg-yellow-400 hover:bg-yellow-300 text-gray-950 font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
-        >
-          + Log Today
+        <button className="btn-gold" onClick={openAdd}>
+          <i className="ti ti-plus" aria-hidden="true" />
+          Log Today
         </button>
       </div>
 
-      {/* Add / Edit Form */}
+      {/* Add / Edit form */}
       {showForm && (
-        <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 mb-6">
-          <h2 className="text-base font-semibold mb-4 text-gray-100">
-            {editId ? 'Edit Entry' : 'Log Train Entry'}
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="lw-form-panel" style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#c8a840', marginBottom: 14 }}>{editId ? 'Edit Entry' : 'Log Train Entry'}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">Date</label>
-              <input
-                type="date"
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400"
-                value={form.log_date}
-                onChange={e => setForm(f => ({ ...f, log_date: e.target.value }))}
-              />
+              <label className="lw-form-label">Date</label>
+              <input type="date" className="lw-input" value={form.log_date} onChange={e => setForm(f => ({ ...f, log_date: e.target.value }))} />
             </div>
-            <div className="hidden sm:block" />
-
+            <div style={{ display: 'none' }} />
             <MemberAutocomplete
-              label="Conductor"
-              required
-              selectedId={form.conductor_id}
-              selectedName={form.conductor_name}
-              members={members}
-              recentDates={conductorRecentDates}
+              label="Conductor" required
+              selectedId={form.conductor_id} selectedName={form.conductor_name}
+              members={members} recentDates={conductorRecentDates}
               onSelect={(id, name) => setForm(f => ({ ...f, conductor_id: id, conductor_name: name }))}
               onManualChange={name => setForm(f => ({ ...f, conductor_name: name, conductor_id: '' }))}
             />
-
             <MemberAutocomplete
               label="VIP / Special Guest"
-              selectedId={form.vip_id}
-              selectedName={form.vip_name}
-              members={members}
-              recentDates={vipRecentDates}
+              selectedId={form.vip_id} selectedName={form.vip_name}
+              members={members} recentDates={vipRecentDates}
               onSelect={(id, name) => setForm(f => ({ ...f, vip_id: id, vip_name: name }))}
               onManualChange={name => setForm(f => ({ ...f, vip_name: name, vip_id: '' }))}
             />
-
-            <div className="sm:col-span-2">
-              <label className="text-xs text-gray-400 mb-1 block">Notes (optional)</label>
-              <input
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400"
-                placeholder="Any notes about this run"
-                value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              />
+            <div style={{ gridColumn: 'span 2' }}>
+              <label className="lw-form-label">Notes (optional)</label>
+              <input className="lw-input" placeholder="Any notes about this run" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
           </div>
-
-          {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
-
-          <div className="flex gap-3 mt-4">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-gray-950 font-semibold px-5 py-2 rounded-lg text-sm transition-colors"
-            >
-              {saving ? 'Saving…' : editId ? 'Save Changes' : 'Save Entry'}
-            </button>
-            <button
-              onClick={() => { setShowForm(false); setError(null) }}
-              className="text-gray-400 hover:text-gray-200 px-4 py-2 rounded-lg text-sm border border-gray-700 transition-colors"
-            >
-              Cancel
-            </button>
+          {error && <div className="lw-error" style={{ marginTop: 12 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <button className="btn-gold" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : editId ? 'Save Changes' : 'Save Entry'}</button>
+            <button className="btn-ghost" onClick={() => { setShowForm(false); setError(null) }}>Cancel</button>
           </div>
         </div>
       )}
 
       {/* Search */}
-      <div className="relative mb-4">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">🔍</span>
-        <input
-          className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-yellow-400"
-          placeholder="Search by name or date…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        {search && (
-          <button
-            onClick={() => setSearch('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs"
-          >
-            ✕
-          </button>
-        )}
+      <div className="lw-search" style={{ marginBottom: 12 }}>
+        <i className="ti ti-search" aria-hidden="true" style={{ color: '#4a3820', fontSize: 14 }} />
+        <input placeholder="Search by name or date…" value={search} onChange={e => setSearch(e.target.value)} />
+        {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#4a3820', cursor: 'pointer', fontSize: 12 }}>✕</button>}
       </div>
 
-      {/* Log table */}
+      {/* Table */}
       {loading ? (
-        <div className="text-gray-500 text-sm py-12 text-center">Loading log…</div>
+        <div style={{ textAlign: 'center', color: '#4a3820', padding: '48px 0', fontSize: 13 }}>Loading log…</div>
       ) : filtered.length === 0 ? (
-        <div className="text-gray-500 text-sm py-12 text-center">
-          {search ? `No entries matching "${search}"` : 'No entries yet — log today\'s conductor above.'}
+        <div style={{ textAlign: 'center', color: '#4a3820', padding: '48px 0', fontSize: 13 }}>
+          {search ? `No entries matching "${search}"` : "No entries yet — log today's conductor above."}
         </div>
       ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-x-auto">
-          <table className="w-full text-sm min-w-[640px]">
+        <div className="lw-card" style={{ overflowX: 'auto' }}>
+          <table className="lw-table" style={{ minWidth: 640 }}>
             <thead>
-              <tr className="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
-                <th className="text-left px-4 py-3 font-medium">Date</th>
-                <th className="text-left px-4 py-3 font-medium">Conductor</th>
-                <th className="text-left px-4 py-3 font-medium">VIP</th>
-                <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Notes</th>
-                <th className="px-4 py-3"></th>
+              <tr>
+                <th><i className="ti ti-calendar" aria-hidden="true" style={{ fontSize: 12 }} /> Date</th>
+                <th><i className="ti ti-steering-wheel" aria-hidden="true" style={{ fontSize: 12 }} /> Conductor</th>
+                <th><i className="ti ti-star" aria-hidden="true" style={{ fontSize: 12 }} /> VIP</th>
+                <th>Notes</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(log => {
                 const isRecent       = new Date(log.log_date + 'T00:00:00') >= twoWeeksAgo
-                const conductorPrior = getRecentDatesFor(log.conductor_name, 'both')
-                  .filter(d => d !== log.log_date)
-                const vipPrior       = log.vip_name
-                  ? getRecentDatesFor(log.vip_name, 'both').filter(d => d !== log.log_date)
-                  : []
-
+                const conductorPrior = getRecentDatesFor(log.conductor_name).filter(d => d !== log.log_date)
+                const vipPrior       = log.vip_name ? getRecentDatesFor(log.vip_name).filter(d => d !== log.log_date) : []
                 return (
-                  <tr key={log.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50 transition-colors">
-                    <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
-                      {formatDate(log.log_date)}
-                      {isRecent && (
-                        <span className="ml-2 bg-yellow-900/50 text-yellow-400 text-xs px-1.5 py-0.5 rounded">recent</span>
-                      )}
+                  <tr key={log.id}>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <span style={{ color: '#7a6030', fontSize: 12 }}>{formatDate(log.log_date)}</span>
+                      {isRecent && <span style={{ marginLeft: 6, background: '#1a1400', border: '1px solid #b8860b', color: '#ffd700', fontSize: 9, padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>RECENT</span>}
                     </td>
-                    <td className="px-4 py-3">
-                      <NameCell name={log.conductor_name} priorDates={isRecent ? conductorPrior : []} />
-                    </td>
-                    <td className="px-4 py-3">
+                    <td><NameCell name={log.conductor_name} priorDates={isRecent ? conductorPrior : []} /></td>
+                    <td>
                       {log.vip_name
                         ? <NameCell name={log.vip_name} priorDates={isRecent ? vipPrior : []} />
-                        : <span className="text-gray-600">—</span>
+                        : <span style={{ color: '#3a2a10' }}>—</span>
                       }
                     </td>
-                    <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{log.notes || '—'}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 justify-end">
-                        <button
-                          onClick={() => openEdit(log)}
-                          className="text-gray-400 hover:text-yellow-400 text-xs px-2 py-1 rounded border border-gray-700 hover:border-yellow-400 transition-colors"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(log.id, log.log_date)}
-                          className="text-gray-400 hover:text-red-400 text-xs px-2 py-1 rounded border border-gray-700 hover:border-red-400 transition-colors"
-                        >
-                          Delete
-                        </button>
+                    <td style={{ color: '#4a3820', fontSize: 12 }}>{log.notes || '—'}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                        <button className="btn-ghost" onClick={() => openEdit(log)}>Edit</button>
+                        <button className="btn-ghost danger" onClick={() => handleDelete(log.id, log.log_date)}>Delete</button>
                       </div>
                     </td>
                   </tr>

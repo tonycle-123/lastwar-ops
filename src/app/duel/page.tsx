@@ -26,6 +26,15 @@ function formatDateLabel(dateStr: string) {
 
 type ScoreMap = Record<string, Record<number, number>>
 
+const DAY_ICONS: Record<number, string> = {
+  1: 'ti-radar',
+  2: 'ti-building',
+  3: 'ti-flask',
+  4: 'ti-sword',
+  5: 'ti-rocket',
+  6: 'ti-skull',
+}
+
 export default function DuelPage() {
   const supabase = createClient()
 
@@ -43,45 +52,28 @@ export default function DuelPage() {
   async function ensureCurrentEvent(): Promise<DuelEvent> {
     const monday = getMondayOf(new Date())
     const { data: existing } = await supabase
-      .from('duel_events')
-      .select('*')
-      .eq('week_start', monday)
-      .single()
-
+      .from('duel_events').select('*').eq('week_start', monday).single()
     if (existing) return existing
-
     const { data: created, error } = await supabase
       .from('duel_events')
       .upsert({ week_start: monday }, { onConflict: 'week_start' })
-      .select()
-      .single()
-
+      .select().single()
     if (error) throw new Error(error.message)
     return created
   }
 
   async function fetchEvents() {
-    const { data } = await supabase
-      .from('duel_events')
-      .select('*')
-      .order('week_start', { ascending: false })
+    const { data } = await supabase.from('duel_events').select('*').order('week_start', { ascending: false })
     return data || []
   }
 
   async function fetchMembers() {
-    const { data } = await supabase
-      .from('members')
-      .select('*')
-      .eq('active', true)
+    const { data } = await supabase.from('members').select('*').eq('active', true)
     return data || []
   }
 
   async function fetchScores(eventId: string): Promise<ScoreMap> {
-    const { data } = await supabase
-      .from('duel_scores')
-      .select('*')
-      .eq('event_id', eventId)
-
+    const { data } = await supabase.from('duel_scores').select('*').eq('event_id', eventId)
     const map: ScoreMap = {}
     for (const s of (data || []) as DuelScore[]) {
       if (!map[s.member_id]) map[s.member_id] = {}
@@ -93,24 +85,17 @@ export default function DuelPage() {
   const loadEvent = useCallback(async (event: DuelEvent) => {
     setSelected(event)
     const [m, s] = await Promise.all([fetchMembers(), fetchScores(event.id)])
-    setMembers(m)
-    setScores(s)
+    setMembers(m); setScores(s)
   }, [])
 
   useEffect(() => {
     async function init() {
       try {
-        const [current, allEvents] = await Promise.all([
-          ensureCurrentEvent(),
-          fetchEvents(),
-        ])
+        const [current, allEvents] = await Promise.all([ensureCurrentEvent(), fetchEvents()])
         setEvents(allEvents.length ? allEvents : [current])
         await loadEvent(current)
-      } catch (e: any) {
-        setError(e.message)
-      } finally {
-        setLoading(false)
-      }
+      } catch (e: any) { setError(e.message) }
+      finally { setLoading(false) }
     }
     init()
   }, [])
@@ -118,9 +103,7 @@ export default function DuelPage() {
   async function handleEventChange(eventId: string) {
     const event = events.find(e => e.id === eventId)
     if (!event) return
-    setLoading(true)
-    await loadEvent(event)
-    setLoading(false)
+    setLoading(true); await loadEvent(event); setLoading(false)
   }
 
   function startEdit(memberId: string, day: number) {
@@ -134,26 +117,14 @@ export default function DuelPage() {
     const { memberId, day } = editCell
     const score = parseInt(editValue.replace(/,/g, ''), 10) || 0
     setSaving(`${memberId}-${day}`)
-
-    const { error } = await supabase
-      .from('duel_scores')
-      .upsert(
-        { event_id: selectedEvent.id, member_id: memberId, day, score },
-        { onConflict: 'event_id,member_id,day' }
-      )
-
+    const { error } = await supabase.from('duel_scores').upsert(
+      { event_id: selectedEvent.id, member_id: memberId, day, score },
+      { onConflict: 'event_id,member_id,day' }
+    )
     if (!error) {
-      setScores(prev => ({
-        ...prev,
-        [memberId]: { ...(prev[memberId] || {}), [day]: score },
-      }))
-    } else {
-      setError(error.message)
-    }
-
-    setEditCell(null)
-    setEditValue('')
-    setSaving(null)
+      setScores(prev => ({ ...prev, [memberId]: { ...(prev[memberId] || {}), [day]: score } }))
+    } else { setError(error.message) }
+    setEditCell(null); setEditValue(''); setSaving(null)
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -161,7 +132,6 @@ export default function DuelPage() {
     if (e.key === 'Escape') { setEditCell(null); setEditValue('') }
   }
 
-  // Calculate totals, sort by total desc, then filter by search
   const ranked = members
     .map(m => {
       const dayScores = scores[m.id] || {}
@@ -170,25 +140,29 @@ export default function DuelPage() {
     })
     .sort((a, b) => b.total - a.total)
 
-  const filtered = ranked.filter(m =>
-    m.name.toLowerCase().includes(search.toLowerCase())
-  )
-
+  const filtered = ranked.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
   const isCurrentWeek = selectedEvent?.week_start === getMondayOf(new Date())
+  const topScore = filtered[0]?.total || 0
 
   return (
     <div>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20 }}>
         <div>
-          <h1 className="text-2xl font-bold text-gray-100">Alliance Duel</h1>
-          <p className="text-gray-400 text-sm mt-0.5">
-            {isCurrentWeek ? '🟢 Current week' : '📅 Viewing past event'}
-            {selectedEvent && ` — week of ${formatDateLabel(selectedEvent.week_start)}`}
-          </p>
+          <div className="section-title" style={{ marginBottom: 4 }}>
+            <i className="ti ti-trophy" aria-hidden="true" />
+            Alliance Duel
+          </div>
+          <div style={{ fontSize: 12, color: '#4a3820', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: isCurrentWeek ? '#4a8a4a' : '#7a6030' }}>
+              {isCurrentWeek ? '● Current week' : '○ Past event'}
+            </span>
+            {selectedEvent && <span>— week of {formatDateLabel(selectedEvent.week_start)}</span>}
+          </div>
         </div>
         <select
-          className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-400"
+          className="lw-select"
+          style={{ width: 'auto', minWidth: 200 }}
           value={selectedEvent?.id || ''}
           onChange={e => handleEventChange(e.target.value)}
         >
@@ -201,80 +175,76 @@ export default function DuelPage() {
         </select>
       </div>
 
-      {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+      {error && <div className="lw-error" style={{ marginBottom: 14 }}>{error}</div>}
 
       {loading ? (
-        <div className="text-gray-500 text-sm py-12 text-center">Loading scores…</div>
+        <div style={{ textAlign: 'center', color: '#4a3820', padding: '48px 0', fontSize: 13 }}>Loading scores…</div>
       ) : (
         <>
-          {/* Day theme legend */}
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+          {/* Day theme cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 16 }}>
             {Object.entries(DUEL_DAYS).map(([day, theme]) => (
-              <div key={day} className="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-center">
-                <p className="text-xs text-gray-500 font-medium">Day {day}</p>
-                <p className="text-xs text-gray-300 mt-0.5">{theme.short}</p>
+              <div key={day} style={{ background: '#141210', border: '1px solid #2a1f0a', borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
+                <i className={`ti ${DAY_ICONS[Number(day)]}`} aria-hidden="true" style={{ fontSize: 16, color: '#b8860b', display: 'block', marginBottom: 4 }} />
+                <div style={{ fontSize: 10, color: '#4a3820', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Day {day}</div>
+                <div style={{ fontSize: 10, color: '#7a6030', marginTop: 2 }}>{theme.short}</div>
               </div>
             ))}
           </div>
 
           {/* Search */}
-          <div className="relative mb-4">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">🔍</span>
-            <input
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-yellow-400"
-              placeholder="Search member name…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs"
-              >
-                ✕
-              </button>
-            )}
+          <div className="lw-search" style={{ marginBottom: 12 }}>
+            <i className="ti ti-search" aria-hidden="true" style={{ color: '#4a3820', fontSize: 14 }} />
+            <input placeholder="Search member…" value={search} onChange={e => setSearch(e.target.value)} />
+            {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#4a3820', cursor: 'pointer', fontSize: 12 }}>✕</button>}
           </div>
 
           {/* Score table */}
-          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-x-auto">
-            <table className="w-full text-sm min-w-[700px]">
+          <div className="lw-card" style={{ overflowX: 'auto' }}>
+            <table className="lw-table" style={{ minWidth: 720 }}>
               <thead>
-                <tr className="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
-                  <th className="text-left px-4 py-3 font-medium w-8">#</th>
-                  <th className="text-left px-4 py-3 font-medium">Member</th>
+                <tr>
+                  <th style={{ width: 32 }}>#</th>
+                  <th>Member</th>
                   {Object.entries(DUEL_DAYS).map(([day, theme]) => (
-                    <th key={day} className="text-right px-3 py-3 font-medium">
-                      <span className="block text-gray-500">D{day}</span>
-                      <span className="block text-gray-600 text-xs normal-case">{theme.short}</span>
+                    <th key={day} style={{ textAlign: 'right' }}>
+                      <span style={{ display: 'block', color: '#4a3820' }}>D{day}</span>
+                      <span style={{ display: 'block', color: '#3a2a10', fontSize: 9, textTransform: 'none', fontWeight: 400 }}>{theme.short}</span>
                     </th>
                   ))}
-                  <th className="text-right px-4 py-3 font-medium text-yellow-400">Total</th>
+                  <th style={{ textAlign: 'right', color: '#b8860b' }}>Total</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-gray-500 text-sm">
-                      {search ? `No members found matching "${search}"` : 'No members in roster yet.'}
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((m, i) => (
-                    <tr key={m.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/30 transition-colors">
-                      <td className="px-4 py-3 text-gray-500 font-mono text-xs">{i + 1}</td>
-                      <td className="px-4 py-3 font-medium text-gray-100">{m.name}</td>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', color: '#4a3820', padding: '40px 0' }}>{search ? `No members matching "${search}"` : 'No members yet.'}</td></tr>
+                ) : filtered.map((m, i) => {
+                  const pct = topScore > 0 ? (m.total / topScore) : 0
+                  return (
+                    <tr key={m.id}>
+                      <td style={{ color: '#3a2a10', fontSize: 11 }}>
+                        {i === 0 && m.total > 0 ? '🥇' : i === 1 && m.total > 0 ? '🥈' : i === 2 && m.total > 0 ? '🥉' : i + 1}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontWeight: 500, color: '#e8d8a0' }}>{m.name}</span>
+                          {m.total > 0 && (
+                            <div style={{ height: 3, width: 48, background: '#1a1400', borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${pct * 100}%`, background: 'linear-gradient(90deg, #b8860b, #ffd700)', borderRadius: 2 }} />
+                            </div>
+                          )}
+                        </div>
+                      </td>
                       {[1,2,3,4,5,6].map(day => {
                         const isEditing = editCell?.memberId === m.id && editCell?.day === day
                         const isSaving  = saving === `${m.id}-${day}`
                         const val       = m.dayScores[day] ?? 0
-
                         return (
-                          <td key={day} className="px-3 py-3 text-right">
+                          <td key={day} style={{ textAlign: 'right' }}>
                             {isEditing ? (
                               <input
                                 autoFocus
-                                className="w-24 bg-gray-700 border border-yellow-400 rounded px-2 py-1 text-xs text-right text-gray-100 focus:outline-none"
+                                style={{ width: 80, background: '#1a1400', border: '1px solid #b8860b', borderRadius: 5, padding: '3px 6px', fontSize: 12, color: '#ffd700', textAlign: 'right', outline: 'none', fontFamily: 'monospace' }}
                                 value={editValue}
                                 onChange={e => setEditValue(e.target.value)}
                                 onBlur={commitEdit}
@@ -284,11 +254,9 @@ export default function DuelPage() {
                             ) : (
                               <button
                                 onClick={() => startEdit(m.id, day)}
-                                className={`font-mono text-xs px-2 py-1 rounded transition-colors w-24 text-right ${
-                                  val > 0
-                                    ? 'text-gray-200 hover:bg-gray-700'
-                                    : 'text-gray-600 hover:bg-gray-700 hover:text-gray-400'
-                                } ${isSaving ? 'opacity-50' : ''}`}
+                                style={{ fontFamily: 'monospace', fontSize: 12, padding: '3px 6px', borderRadius: 5, border: '1px solid transparent', background: 'transparent', cursor: 'pointer', width: 80, textAlign: 'right', transition: 'all 0.1s', color: val > 0 ? '#c8a840' : '#3a2a10', opacity: isSaving ? 0.5 : 1 }}
+                                onMouseEnter={e => { (e.target as HTMLButtonElement).style.borderColor = '#2a1f0a'; (e.target as HTMLButtonElement).style.background = '#141200' }}
+                                onMouseLeave={e => { (e.target as HTMLButtonElement).style.borderColor = 'transparent'; (e.target as HTMLButtonElement).style.background = 'transparent' }}
                               >
                                 {val > 0 ? formatScore(val) : '—'}
                               </button>
@@ -296,17 +264,16 @@ export default function DuelPage() {
                           </td>
                         )
                       })}
-                      <td className="px-4 py-3 text-right font-mono font-bold text-yellow-400">
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: m.total > 0 ? '#ffd700' : '#3a2a10' }}>
                         {m.total > 0 ? formatScore(m.total) : '—'}
                       </td>
                     </tr>
-                  ))
-                )}
+                  )
+                })}
               </tbody>
             </table>
           </div>
-
-          <p className="text-gray-600 text-xs mt-3 text-center">
+          <p style={{ textAlign: 'center', color: '#3a2a10', fontSize: 11, marginTop: 10 }}>
             Click any score cell to edit · Enter to save · Escape to cancel
           </p>
         </>
