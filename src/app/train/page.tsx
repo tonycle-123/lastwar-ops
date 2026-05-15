@@ -27,6 +27,32 @@ const EMPTY_FORM = {
   notes: '',
 }
 
+// Clickable hazard flag that expands to show prior dates
+function NameCell({ name, priorDates }: { name: string; priorDates: string[] }) {
+  const [open, setOpen] = useState(false)
+  const hasFlag = priorDates.length > 0
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="font-medium text-gray-100">{name}</span>
+      {hasFlag && (
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="text-orange-400 hover:text-orange-300 transition-colors text-sm leading-none"
+          title="Active in last 14 days — click to expand"
+        >
+          ⚠️
+        </button>
+      )}
+      {hasFlag && open && (
+        <span className="text-orange-400 text-xs whitespace-nowrap">
+          {priorDates.map(shortDate).join(', ')}
+        </span>
+      )}
+    </div>
+  )
+}
+
 // Autocomplete input that filters from roster
 function MemberAutocomplete({
   label,
@@ -126,7 +152,7 @@ export default function TrainPage() {
       .from('train_log')
       .select('*')
       .order('log_date', { ascending: false })
-      .limit(120)
+      .limit(180)
     if (error) { setError(error.message); return }
     setLogs(data || [])
   }
@@ -381,24 +407,13 @@ export default function TrainPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-medium text-gray-100">{log.conductor_name}</span>
-                        {conductorPrior.length > 0 && (
-                          <span className="text-orange-400 text-xs">
-                            ⚠️ also active: {conductorPrior.map(shortDate).join(', ')}
-                          </span>
-                        )}
-                      </div>
+                      <NameCell name={log.conductor_name} priorDates={isRecent ? conductorPrior : []} />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-gray-300">{log.vip_name || <span className="text-gray-600">—</span>}</span>
-                        {vipPrior.length > 0 && (
-                          <span className="text-orange-400 text-xs">
-                            ⚠️ also active: {vipPrior.map(shortDate).join(', ')}
-                          </span>
-                        )}
-                      </div>
+                      {log.vip_name
+                        ? <NameCell name={log.vip_name} priorDates={isRecent ? vipPrior : []} />
+                        : <span className="text-gray-600">—</span>
+                      }
                     </td>
                     <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{log.notes || '—'}</td>
                     <td className="px-4 py-3">
