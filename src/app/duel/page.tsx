@@ -68,7 +68,7 @@ export default function DuelPage() {
   const [newEventDate, setNewEventDate] = useState('')
 
   async function ensureCurrentEvent(): Promise<DuelEvent> {
-    const monday = getEventSundayOf(new Date())
+    const sunday = getEventSundayOf(new Date())
     const { data: existing } = await supabase.from('duel_events').select('*').eq('week_start', sunday).single()
     if (existing) return existing
     const { data: created, error } = await supabase.from('duel_events').upsert({ week_start: sunday }, { onConflict: 'week_start' }).select().single()
