@@ -4,30 +4,6 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Member, DuelEvent, DuelScore, DUEL_DAYS } from '@/lib/types'
 
-// Alliance Duel starts Sunday at 10pm ET.
-// We find the most recent Sunday where the event would have started.
-// If it's Sunday but before 10pm ET, use the previous Sunday.
-function getEventSundayOf(date: Date): string {
-  // Convert to ET
-  const etString = date.toLocaleString('en-US', { timeZone: 'America/New_York' })
-  const et = new Date(etString)
-  const day  = et.getDay()   // 0 = Sunday
-  const hour = et.getHours()
-
-  const d = new Date(date)
-  // If Sunday before 10pm ET, go back to previous Sunday
-  if (day === 0 && hour < 22) {
-    d.setDate(d.getDate() - 7)
-  } else {
-    d.setDate(d.getDate() - day)
-  }
-  // Return as YYYY-MM-DD
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${dd}`
-}
-
 function formatScore(n: number) {
   if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2) + 'B'
   if (n >= 1_000_000)     return (n / 1_000_000).toFixed(1) + 'M'
@@ -35,9 +11,48 @@ function formatScore(n: number) {
   return n.toLocaleString()
 }
 
-function formatDateLabel(dateStr: string) {
+function fmt(dateStr: string) {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' })
+}
+
+function fmtFull(dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00')
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function eventLabel(ev: { week_start: string; week_end?: string | null; label?: string | null }) {
+  if (ev.label) return ev.label
+  const start = fmt(ev.week_start)
+  const end   = ev.week_end ? fmt(ev.week_end) : '—'
+  return `${start} – ${end}`
+}
+
+// Given any date, return the Sunday that started the duel event that week.
+// The event starts Sunday at 10pm ET. If it's Sunday before 10pm ET, 
+// go back to the previous Sunday.
+function getEventSunday(date: Date): string {
+  const etStr = date.toLocaleString('en-US', { timeZone: 'America/New_York' })
+  const et    = new Date(etStr)
+  const day   = et.getDay()   // 0 = Sunday
+  const hour  = et.getHours()
+
+  const d = new Date(date)
+  if (day === 0 && hour < 22) {
+    d.setDate(d.getDate() - 7) // Before 10pm Sunday — still last week's event
+  } else {
+    d.setDate(d.getDate() - day) // Go back to Sunday of this week
+  }
+  const y  = d.getFullYear()
+  const m  = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return d.toISOString().split('T')[0]
 }
 
 type ScoreMap = Record<string, Record<number, number>>
@@ -46,39 +61,36 @@ const DAY_ICONS: Record<number, string> = {
   1: 'ti-radar', 2: 'ti-building', 3: 'ti-flask',
   4: 'ti-sword',  5: 'ti-rocket',  6: 'ti-skull',
 }
-
 const DAY_COLORS: Record<number, string> = {
   1: '#3a7ae8', 2: '#3ab870', 3: '#9a5ae8',
   4: '#e87a3a', 5: '#e8c83a', 6: '#e84a4a',
 }
 
+// What calendar date does Day N fall on for a given event?
+function dayDate(weekStart: string, day: number): string {
+  return addDays(weekStart, day - 1)
+}
+
 export default function DuelPage() {
   const supabase = createClient()
-  const [events, setEvents]          = useState<DuelEvent[]>([])
-  const [selectedEvent, setSelected] = useState<DuelEvent | null>(null)
-  const [members, setMembers]        = useState<Member[]>([])
-  const [scores, setScores]          = useState<ScoreMap>({})
-  const [loading, setLoading]        = useState(true)
-  const [saving, setSaving]          = useState<string | null>(null)
-  const [editCell, setEditCell]      = useState<{ memberId: string; day: number } | null>(null)
-  const [editValue, setEditValue]    = useState('')
-  const [error, setError]            = useState<string | null>(null)
-  const [search, setSearch]          = useState('')
+
+  const [events, setEvents]           = useState<DuelEvent[]>([])
+  const [selectedEvent, setSelected]  = useState<DuelEvent | null>(null)
+  const [members, setMembers]         = useState<Member[]>([])
+  const [scores, setScores]           = useState<ScoreMap>({})
+  const [loading, setLoading]         = useState(true)
+  const [saving, setSaving]           = useState<string | null>(null)
+  const [editCell, setEditCell]       = useState<{ memberId: string; day: number } | null>(null)
+  const [editValue, setEditValue]     = useState('')
+  const [error, setError]             = useState<string | null>(null)
+  const [search, setSearch]           = useState('')
   const [showNewEvent, setShowNewEvent] = useState(false)
   const [newEventDate, setNewEventDate] = useState('')
 
-  async function ensureCurrentEvent(): Promise<DuelEvent> {
-    const sunday = getEventSundayOf(new Date())
-    const { data: existing } = await supabase.from('duel_events').select('*').eq('week_start', sunday).single()
-    if (existing) return existing
-    const { data: created, error } = await supabase.from('duel_events').upsert({ week_start: sunday }, { onConflict: 'week_start' }).select().single()
-    if (error) throw new Error(error.message)
-    return created
-  }
-
   async function fetchEvents() {
-    const { data } = await supabase.from('duel_events').select('*').order('week_start', { ascending: false })
-    return data || []
+    const { data } = await supabase
+      .from('duel_events').select('*').order('week_start', { ascending: false })
+    return (data || []) as DuelEvent[]
   }
 
   async function fetchMembers() {
@@ -96,23 +108,42 @@ export default function DuelPage() {
     return map
   }
 
+  async function ensureCurrentEvent(): Promise<DuelEvent> {
+    const sunday   = getEventSunday(new Date())
+    const saturday = addDays(sunday, 6)
+
+    // Check if event already exists
+    const { data: existing } = await supabase
+      .from('duel_events').select('*').eq('week_start', sunday).single()
+    if (existing) return existing as DuelEvent
+
+    // Create it with start + end dates
+    const { data: created, error } = await supabase
+      .from('duel_events')
+      .upsert({ week_start: sunday, week_end: saturday }, { onConflict: 'week_start' })
+      .select().single()
+    if (error) throw new Error(error.message)
+    return created as DuelEvent
+  }
+
   async function handleCreateEvent() {
     if (!newEventDate) return
-    // Ensure we use the Sunday of the selected date
-    const d = new Date(newEventDate + 'T12:00:00')
+    // Find the Sunday of the selected date's week
+    const d   = new Date(newEventDate + 'T12:00:00')
     const day = d.getDay()
-    d.setDate(d.getDate() - day) // go to Sunday of that week
-    const sunday = d.toISOString().split('T')[0]
+    d.setDate(d.getDate() - day) // back to Sunday
+    const sunday   = d.toISOString().split('T')[0]
+    const saturday = addDays(sunday, 6)
 
     const { data, error } = await supabase
       .from('duel_events')
-      .upsert({ week_start: sunday }, { onConflict: 'week_start' })
+      .upsert({ week_start: sunday, week_end: saturday }, { onConflict: 'week_start' })
       .select().single()
     if (error) { setError(error.message); return }
 
     const updated = await fetchEvents()
     setEvents(updated)
-    await loadEvent(data)
+    await loadEvent(data as DuelEvent)
     setShowNewEvent(false)
     setNewEventDate('')
   }
@@ -176,34 +207,40 @@ export default function DuelPage() {
 
   const filtered = ranked.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
   const topScore = filtered[0]?.total || 0
-  const isCurrentWeek = selectedEvent?.week_start === getEventSundayOf(new Date())
+
+  const currentSunday   = getEventSunday(new Date())
+  const isCurrentWeek   = selectedEvent?.week_start === currentSunday
 
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
         <div>
           <div className="section-title" style={{ marginBottom: 4 }}>
             <i className="ti ti-trophy" aria-hidden="true" /> Alliance Duel
           </div>
-          <div style={{ fontSize: 12, color: '#8090b8', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontSize: 12, color: '#8090b8' }}>
             <span style={{ color: isCurrentWeek ? '#0a6030' : '#8090b8', fontWeight: 600 }}>
-              {isCurrentWeek ? '● Current week' : '○ Past event'}
+              {isCurrentWeek ? '● Current event' : '○ Past event'}
             </span>
-            {selectedEvent && <span>— week of {formatDateLabel(selectedEvent.week_start)}</span>}
+            {selectedEvent && (
+              <span style={{ marginLeft: 6 }}>
+                — {fmt(selectedEvent.week_start)} – {selectedEvent.week_end ? fmt(selectedEvent.week_end) : fmt(addDays(selectedEvent.week_start, 6))}
+              </span>
+            )}
           </div>
         </div>
+
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <select
             className="lw-select"
-            style={{ width: 'auto', minWidth: 220 }}
+            style={{ width: 'auto', minWidth: 180 }}
             value={selectedEvent?.id || ''}
             onChange={e => handleEventChange(e.target.value)}
           >
             {events.map(ev => (
               <option key={ev.id} value={ev.id}>
-                {ev.label || `Week of ${formatDateLabel(ev.week_start)}`}
-                {ev.week_start === getEventSundayOf(new Date()) ? ' (current)' : ''}
+                {eventLabel(ev)}{ev.week_start === currentSunday ? ' (current)' : ''}
               </option>
             ))}
           </select>
@@ -211,30 +248,24 @@ export default function DuelPage() {
             <i className="ti ti-plus" aria-hidden="true" style={{ fontSize: 12 }} /> New Event
           </button>
         </div>
-        {showNewEvent && (
-          <div className="lw-form-panel" style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            <div>
-              <label className="lw-form-label">Event start date (any day in that week)</label>
-              <input
-                type="date"
-                className="lw-input"
-                style={{ width: 180 }}
-                value={newEventDate}
-                onChange={e => setNewEventDate(e.target.value)}
-              />
-            </div>
-            <button className="btn-primary btn-sm" onClick={handleCreateEvent} disabled={!newEventDate}>
-              <i className="ti ti-check" aria-hidden="true" /> Create Event
-            </button>
-            <button className="btn-primary btn-sm" onClick={() => setShowNewEvent(false)} style={{ background: 'transparent', color: '#4a5a7a', borderColor: '#c0cce0' }}>
-              Cancel
-            </button>
-            <p style={{ fontSize: 11, color: '#8090b8', width: '100%', margin: 0 }}>
-              Pick any date within the event week — the app will automatically use that Sunday as the start.
-            </p>
-          </div>
-        )}
       </div>
+
+      {/* New event form */}
+      {showNewEvent && (
+        <div className="lw-form-panel" style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <label className="lw-form-label">Pick any date within the event week</label>
+            <input type="date" className="lw-input" style={{ width: 180 }} value={newEventDate} onChange={e => setNewEventDate(e.target.value)} />
+          </div>
+          <button className="btn-primary btn-sm" onClick={handleCreateEvent} disabled={!newEventDate}>
+            <i className="ti ti-check" aria-hidden="true" /> Create Event
+          </button>
+          <button className="btn-primary btn-sm" onClick={() => setShowNewEvent(false)} style={{ background: 'transparent', color: '#4a5a7a', borderColor: '#c0cce0' }}>Cancel</button>
+          <p style={{ fontSize: 11, color: '#8090b8', width: '100%', margin: 0 }}>
+            The app will automatically set the event to Sun–Sat of the week you pick.
+          </p>
+        </div>
+      )}
 
       {error && <div className="lw-error" style={{ marginBottom: 14 }}>{error}</div>}
 
@@ -242,15 +273,19 @@ export default function DuelPage() {
         <div style={{ textAlign: 'center', color: '#8090b8', padding: '48px 0', fontSize: 13 }}>Loading scores…</div>
       ) : (
         <>
-          {/* Day theme cards */}
+          {/* Day theme cards — show the actual calendar date for each day */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 16 }}>
-            {Object.entries(DUEL_DAYS).map(([day, theme]) => (
-              <div key={day} style={{ background: '#fff', border: '1.5px solid #e0e8f4', borderRadius: 10, padding: '10px 6px', textAlign: 'center' }}>
-                <i className={`ti ${DAY_ICONS[Number(day)]}`} aria-hidden="true" style={{ fontSize: 18, color: DAY_COLORS[Number(day)], display: 'block', marginBottom: 5 }} />
-                <div style={{ fontSize: 10, fontWeight: 800, color: '#4a5a7a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Day {day}</div>
-                <div style={{ fontSize: 10, color: '#8090b8', marginTop: 2 }}>{theme.short}</div>
-              </div>
-            ))}
+            {Object.entries(DUEL_DAYS).map(([day, theme]) => {
+              const date = selectedEvent ? dayDate(selectedEvent.week_start, Number(day)) : ''
+              return (
+                <div key={day} style={{ background: '#fff', border: '1.5px solid #e0e8f4', borderRadius: 10, padding: '10px 6px', textAlign: 'center' }}>
+                  <i className={`ti ${DAY_ICONS[Number(day)]}`} aria-hidden="true" style={{ fontSize: 16, color: DAY_COLORS[Number(day)], display: 'block', marginBottom: 4 }} />
+                  <div style={{ fontSize: 10, fontWeight: 800, color: '#4a5a7a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Day {day}</div>
+                  <div style={{ fontSize: 10, color: '#8090b8', marginTop: 1 }}>{theme.short}</div>
+                  {date && <div style={{ fontSize: 9, color: '#a0b0cc', marginTop: 2, fontWeight: 600 }}>{fmt(date)}</div>}
+                </div>
+              )
+            })}
           </div>
 
           {/* Search */}
@@ -267,12 +302,15 @@ export default function DuelPage() {
                 <tr>
                   <th style={{ width: 36 }}>#</th>
                   <th>Member</th>
-                  {Object.entries(DUEL_DAYS).map(([day, theme]) => (
-                    <th key={day} style={{ textAlign: 'right' }}>
-                      <span style={{ display: 'block' }}>D{day}</span>
-                      <span style={{ display: 'block', color: '#c0cce0', fontSize: 9, textTransform: 'none', fontWeight: 400 }}>{theme.short}</span>
-                    </th>
-                  ))}
+                  {Object.entries(DUEL_DAYS).map(([day, theme]) => {
+                    const date = selectedEvent ? dayDate(selectedEvent.week_start, Number(day)) : ''
+                    return (
+                      <th key={day} style={{ textAlign: 'right' }}>
+                        <span style={{ display: 'block' }}>D{day}</span>
+                        <span style={{ display: 'block', color: '#c0cce0', fontSize: 9, textTransform: 'none', fontWeight: 400 }}>{date ? fmt(date) : theme.short}</span>
+                      </th>
+                    )
+                  })}
                   <th style={{ textAlign: 'right', color: '#1a4ab0' }}>Total</th>
                 </tr>
               </thead>
@@ -301,22 +339,15 @@ export default function DuelPage() {
                         return (
                           <td key={day} style={{ textAlign: 'right' }}>
                             {isEditing ? (
-                              <input
-                                autoFocus
+                              <input autoFocus
                                 style={{ width: 80, background: '#fff', border: '1.5px solid #3a7ae8', borderRadius: 6, padding: '4px 7px', fontSize: 12, color: '#1a2a4a', textAlign: 'right', outline: 'none', fontFamily: 'monospace' }}
-                                value={editValue}
-                                onChange={e => setEditValue(e.target.value)}
-                                onBlur={commitEdit}
-                                onKeyDown={handleKeyDown}
-                                placeholder="0"
-                              />
+                                value={editValue} onChange={e => setEditValue(e.target.value)}
+                                onBlur={commitEdit} onKeyDown={handleKeyDown} placeholder="0" />
                             ) : (
-                              <button
-                                onClick={() => startEdit(m.id, day)}
+                              <button onClick={() => startEdit(m.id, day)}
                                 style={{ fontFamily: 'monospace', fontSize: 12, padding: '4px 7px', borderRadius: 6, border: '1.5px solid transparent', background: 'transparent', cursor: 'pointer', width: 80, textAlign: 'right', transition: 'all 0.1s', color: val > 0 ? '#1a2a4a' : '#c0cce0', fontWeight: val > 0 ? 700 : 400, opacity: isSaving ? 0.5 : 1 }}
                                 onMouseEnter={e => { (e.target as HTMLButtonElement).style.borderColor = '#d0d8ec'; (e.target as HTMLButtonElement).style.background = '#f4f7fd' }}
-                                onMouseLeave={e => { (e.target as HTMLButtonElement).style.borderColor = 'transparent'; (e.target as HTMLButtonElement).style.background = 'transparent' }}
-                              >
+                                onMouseLeave={e => { (e.target as HTMLButtonElement).style.borderColor = 'transparent'; (e.target as HTMLButtonElement).style.background = 'transparent' }}>
                                 {val > 0 ? formatScore(val) : '—'}
                               </button>
                             )}

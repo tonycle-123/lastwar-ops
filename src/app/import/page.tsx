@@ -69,6 +69,7 @@ export default function ImportPage() {
   const [duelRows, setDuelRows]         = useState<DuelRow[]>([])
   const [members, setMembers]           = useState<Member[]>([])
   const [currentEvent, setCurrentEvent] = useState<DuelEvent | null>(null)
+  const [allEvents, setAllEvents]       = useState<DuelEvent[]>([])
   const [pasteText, setPasteText]       = useState('')
   const [trainRows, setTrainRows]       = useState<TrainRow[]>([])
   const [trainSaving, setTrainSaving]   = useState(false)
@@ -76,9 +77,11 @@ export default function ImportPage() {
   useEffect(() => {
     async function load() {
       const { data } = await supabase.from('members').select('*').eq('active', true); setMembers(data || [])
-      const monday = getMondayOf(new Date())
-      const { data: existing } = await supabase.from('duel_events').select('*').eq('week_start', monday).single()
-      if (existing) setCurrentEvent(existing)
+      const { data: eventsData } = await supabase.from('duel_events').select('*').order('week_start', { ascending: false })
+      const evList = (eventsData || []) as DuelEvent[]
+      setAllEvents(evList)
+      // Default to most recent event
+      if (evList.length > 0) setCurrentEvent(evList[0])
     }
     load()
   }, [])
@@ -313,17 +316,42 @@ export default function ImportPage() {
 
           {importMode === 'duel' && (
             <div className="lw-form-panel" style={{ marginBottom: 14 }}>
-              <div className="lw-form-label" style={{ marginBottom: 10 }}>Which day is this from?</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>
-                {Object.entries(DUEL_DAYS).map(([day, theme]) => (
-                  <button key={day} onClick={() => setSelectedDay(Number(day))}
-                    style={{ ...tabStyle(selectedDay === Number(day)), flexDirection: 'column', padding: '8px 4px', fontSize: 10, justifyContent: 'center' } as React.CSSProperties}>
-                    <span style={{ fontWeight: 800 }}>Day {day}</span>
-                    <span style={{ fontSize: 9, opacity: 0.7, marginTop: 1 }}>{theme.short}</span>
-                  </button>
-                ))}
+              {/* Event selector */}
+              <div style={{ marginBottom: 14 }}>
+                <label className="lw-form-label">Which event week?</label>
+                <select className="lw-select" value={currentEvent?.id || ''} onChange={async e => {
+                  const { data } = await supabase.from('duel_events').select('*').eq('id', e.target.value).single()
+                  if (data) setCurrentEvent(data)
+                }}>
+                  {allEvents.map(ev => (
+                    <option key={ev.id} value={ev.id}>
+                      {ev.week_end
+                        ? `${new Date(ev.week_start+'T00:00:00').toLocaleDateString('en-US',{month:'2-digit',day:'2-digit'})} – ${new Date(ev.week_end+'T00:00:00').toLocaleDateString('en-US',{month:'2-digit',day:'2-digit'})}`
+                        : new Date(ev.week_start+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+                      }
+                    </option>
+                  ))}
+                </select>
               </div>
-              {currentEvent && <div style={{ fontSize: 11, color: '#8090b8', marginTop: 10 }}>Saving to week of {new Date(currentEvent.week_start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>}
+              {/* Day selector */}
+              <div className="lw-form-label" style={{ marginBottom: 8 }}>Which day is this from?</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>
+                {Object.entries(DUEL_DAYS).map(([day, theme]) => {
+                  const dayNum = Number(day)
+                  const dayDate = currentEvent
+                    ? new Date(new Date(currentEvent.week_start+'T00:00:00').getTime() + (dayNum-1)*86400000)
+                        .toLocaleDateString('en-US',{month:'2-digit',day:'2-digit'})
+                    : ''
+                  return (
+                    <button key={day} onClick={() => setSelectedDay(dayNum)}
+                      style={{ ...tabStyle(selectedDay === dayNum), flexDirection: 'column', padding: '8px 4px', fontSize: 10, justifyContent: 'center' } as React.CSSProperties}>
+                      <span style={{ fontWeight: 800 }}>Day {day}</span>
+                      <span style={{ fontSize: 9, opacity: 0.7, marginTop: 1 }}>{theme.short}</span>
+                      {dayDate && <span style={{ fontSize: 9, opacity: 0.6, marginTop: 1 }}>{dayDate}</span>}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           )}
 
