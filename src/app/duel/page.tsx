@@ -108,22 +108,15 @@ export default function DuelPage() {
     return map
   }
 
-  async function ensureCurrentEvent(): Promise<DuelEvent> {
-    const sunday   = getEventSunday(new Date())
-    const saturday = addDays(sunday, 6)
-
-    // Check if event already exists
-    const { data: existing } = await supabase
-      .from('duel_events').select('*').eq('week_start', sunday).single()
-    if (existing) return existing as DuelEvent
-
-    // Create it with start + end dates
-    const { data: created, error } = await supabase
+  async function getMostRecentEvent(): Promise<DuelEvent | null> {
+    // Just return the most recent event — never auto-create
+    const { data } = await supabase
       .from('duel_events')
-      .upsert({ week_start: sunday, week_end: saturday }, { onConflict: 'week_start' })
-      .select().single()
-    if (error) throw new Error(error.message)
-    return created as DuelEvent
+      .select('*')
+      .order('week_start', { ascending: false })
+      .limit(1)
+      .single()
+    return (data as DuelEvent) || null
   }
 
   async function handleCreateEvent() {
@@ -157,9 +150,9 @@ export default function DuelPage() {
   useEffect(() => {
     async function init() {
       try {
-        const [current, allEvents] = await Promise.all([ensureCurrentEvent(), fetchEvents()])
-        setEvents(allEvents.length ? allEvents : [current])
-        await loadEvent(current)
+        const [current, allEvents] = await Promise.all([getMostRecentEvent(), fetchEvents()])
+        setEvents(allEvents)
+        if (current) await loadEvent(current)
       } catch (e: any) { setError(e.message) }
       finally { setLoading(false) }
     }
@@ -208,8 +201,11 @@ export default function DuelPage() {
   const filtered = ranked.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
   const topScore = filtered[0]?.total || 0
 
-  const currentSunday   = getEventSunday(new Date())
-  const isCurrentWeek   = selectedEvent?.week_start === currentSunday
+  // Check if selected event contains today
+  const todayStr = new Date().toISOString().split('T')[0]
+  const isCurrentWeek = selectedEvent
+    ? selectedEvent.week_start <= todayStr && (selectedEvent.week_end ?? addDays(selectedEvent.week_start, 6)) >= todayStr
+    : false
 
   return (
     <div>
@@ -240,7 +236,7 @@ export default function DuelPage() {
           >
             {events.map(ev => (
               <option key={ev.id} value={ev.id}>
-                {eventLabel(ev)}{ev.week_start === currentSunday ? ' (current)' : ''}
+                {eventLabel(ev)}{ev.week_start <= todayStr && (ev.week_end ?? addDays(ev.week_start, 6)) >= todayStr ? ' (current)' : ''}
               </option>
             ))}
           </select>
