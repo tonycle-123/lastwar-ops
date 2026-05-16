@@ -28,21 +28,13 @@ function eventLabel(ev: { week_start: string; week_end?: string | null; label?: 
   return `${start} – ${end}`
 }
 
-// Given any date, return the Sunday that started the duel event that week.
-// The event starts Sunday at 10pm ET. If it's Sunday before 10pm ET, 
-// go back to the previous Sunday.
-function getEventSunday(date: Date): string {
-  const etStr = date.toLocaleString('en-US', { timeZone: 'America/New_York' })
-  const et    = new Date(etStr)
-  const day   = et.getDay()   // 0 = Sunday
-  const hour  = et.getHours()
-
-  const d = new Date(date)
-  if (day === 0 && hour < 22) {
-    d.setDate(d.getDate() - 7) // Before 10pm Sunday — still last week's event
-  } else {
-    d.setDate(d.getDate() - day) // Go back to Sunday of this week
-  }
+// Alliance Duel starts Monday (Sunday 10pm ET = Monday in Asian timezone).
+// Event runs Monday–Saturday (6 days).
+function getEventMonday(date: Date): string {
+  const d   = new Date(date)
+  const day = d.getDay() // 0=Sun, 1=Mon ... 6=Sat
+  const diff = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + diff)
   const y  = d.getFullYear()
   const m  = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
@@ -124,13 +116,15 @@ export default function DuelPage() {
     // Find the Sunday of the selected date's week
     const d   = new Date(newEventDate + 'T12:00:00')
     const day = d.getDay()
-    d.setDate(d.getDate() - day) // back to Sunday
-    const sunday   = d.toISOString().split('T')[0]
-    const saturday = addDays(sunday, 6)
+    // Go to Monday of the selected week (Sunday = go back 6 days)
+    const diff = day === 0 ? -6 : 1 - day
+    d.setDate(d.getDate() + diff)
+    const monday   = d.toISOString().split('T')[0]
+    const saturday = addDays(monday, 5)
 
     const { data, error } = await supabase
       .from('duel_events')
-      .upsert({ week_start: sunday, week_end: saturday }, { onConflict: 'week_start' })
+      .upsert({ week_start: monday, week_end: saturday }, { onConflict: 'week_start' })
       .select().single()
     if (error) { setError(error.message); return }
 
