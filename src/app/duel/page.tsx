@@ -4,12 +4,28 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Member, DuelEvent, DuelScore, DUEL_DAYS } from '@/lib/types'
 
-function getMondayOf(date: Date): string {
+// Alliance Duel starts Sunday at 10pm ET.
+// We find the most recent Sunday where the event would have started.
+// If it's Sunday but before 10pm ET, use the previous Sunday.
+function getEventSundayOf(date: Date): string {
+  // Convert to ET
+  const etString = date.toLocaleString('en-US', { timeZone: 'America/New_York' })
+  const et = new Date(etString)
+  const day  = et.getDay()   // 0 = Sunday
+  const hour = et.getHours()
+
   const d = new Date(date)
-  const day = d.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  d.setDate(d.getDate() + diff)
-  return d.toISOString().split('T')[0]
+  // If Sunday before 10pm ET, go back to previous Sunday
+  if (day === 0 && hour < 22) {
+    d.setDate(d.getDate() - 7)
+  } else {
+    d.setDate(d.getDate() - day)
+  }
+  // Return as YYYY-MM-DD
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
 }
 
 function formatScore(n: number) {
@@ -48,12 +64,14 @@ export default function DuelPage() {
   const [editValue, setEditValue]    = useState('')
   const [error, setError]            = useState<string | null>(null)
   const [search, setSearch]          = useState('')
+  const [showNewEvent, setShowNewEvent] = useState(false)
+  const [newEventDate, setNewEventDate] = useState('')
 
   async function ensureCurrentEvent(): Promise<DuelEvent> {
-    const monday = getMondayOf(new Date())
-    const { data: existing } = await supabase.from('duel_events').select('*').eq('week_start', monday).single()
+    const monday = getEventSundayOf(new Date())
+    const { data: existing } = await supabase.from('duel_events').select('*').eq('week_start', sunday).single()
     if (existing) return existing
-    const { data: created, error } = await supabase.from('duel_events').upsert({ week_start: monday }, { onConflict: 'week_start' }).select().single()
+    const { data: created, error } = await supabase.from('duel_events').upsert({ week_start: sunday }, { onConflict: 'week_start' }).select().single()
     if (error) throw new Error(error.message)
     return created
   }
@@ -76,6 +94,27 @@ export default function DuelPage() {
       map[s.member_id][s.day] = s.score
     }
     return map
+  }
+
+  async function handleCreateEvent() {
+    if (!newEventDate) return
+    // Ensure we use the Sunday of the selected date
+    const d = new Date(newEventDate + 'T12:00:00')
+    const day = d.getDay()
+    d.setDate(d.getDate() - day) // go to Sunday of that week
+    const sunday = d.toISOString().split('T')[0]
+
+    const { data, error } = await supabase
+      .from('duel_events')
+      .upsert({ week_start: sunday }, { onConflict: 'week_start' })
+      .select().single()
+    if (error) { setError(error.message); return }
+
+    const updated = await fetchEvents()
+    setEvents(updated)
+    await loadEvent(data)
+    setShowNewEvent(false)
+    setNewEventDate('')
   }
 
   const loadEvent = useCallback(async (event: DuelEvent) => {
@@ -137,7 +176,7 @@ export default function DuelPage() {
 
   const filtered = ranked.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
   const topScore = filtered[0]?.total || 0
-  const isCurrentWeek = selectedEvent?.week_start === getMondayOf(new Date())
+  const isCurrentWeek = selectedEvent?.week_start === getEventSundayOf(new Date())
 
   return (
     <div>
@@ -154,19 +193,47 @@ export default function DuelPage() {
             {selectedEvent && <span>— week of {formatDateLabel(selectedEvent.week_start)}</span>}
           </div>
         </div>
-        <select
-          className="lw-select"
-          style={{ width: 'auto', minWidth: 220 }}
-          value={selectedEvent?.id || ''}
-          onChange={e => handleEventChange(e.target.value)}
-        >
-          {events.map(ev => (
-            <option key={ev.id} value={ev.id}>
-              {ev.label || `Week of ${formatDateLabel(ev.week_start)}`}
-              {ev.week_start === getMondayOf(new Date()) ? ' (current)' : ''}
-            </option>
-          ))}
-        </select>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select
+            className="lw-select"
+            style={{ width: 'auto', minWidth: 220 }}
+            value={selectedEvent?.id || ''}
+            onChange={e => handleEventChange(e.target.value)}
+          >
+            {events.map(ev => (
+              <option key={ev.id} value={ev.id}>
+                {ev.label || `Week of ${formatDateLabel(ev.week_start)}`}
+                {ev.week_start === getEventSundayOf(new Date()) ? ' (current)' : ''}
+              </option>
+            ))}
+          </select>
+          <button className="btn-primary btn-sm" onClick={() => setShowNewEvent(v => !v)}>
+            <i className="ti ti-plus" aria-hidden="true" style={{ fontSize: 12 }} /> New Event
+          </button>
+        </div>
+        {showNewEvent && (
+          <div className="lw-form-panel" style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div>
+              <label className="lw-form-label">Event start date (any day in that week)</label>
+              <input
+                type="date"
+                className="lw-input"
+                style={{ width: 180 }}
+                value={newEventDate}
+                onChange={e => setNewEventDate(e.target.value)}
+              />
+            </div>
+            <button className="btn-primary btn-sm" onClick={handleCreateEvent} disabled={!newEventDate}>
+              <i className="ti ti-check" aria-hidden="true" /> Create Event
+            </button>
+            <button className="btn-primary btn-sm" onClick={() => setShowNewEvent(false)} style={{ background: 'transparent', color: '#4a5a7a', borderColor: '#c0cce0' }}>
+              Cancel
+            </button>
+            <p style={{ fontSize: 11, color: '#8090b8', width: '100%', margin: 0 }}>
+              Pick any date within the event week — the app will automatically use that Sunday as the start.
+            </p>
+          </div>
+        )}
       </div>
 
       {error && <div className="lw-error" style={{ marginBottom: 14 }}>{error}</div>}
