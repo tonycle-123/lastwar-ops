@@ -12,6 +12,7 @@ export type Member = {
 export type DuelEvent = {
   id: string
   week_start: string
+  week_end: string | null
   label: string | null
   created_at: string
 }
